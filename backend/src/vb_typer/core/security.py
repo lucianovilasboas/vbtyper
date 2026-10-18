@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 from vb_typer.core.config import AppSettings
 from vb_typer.core.paths import AppPaths
 
+TOKEN_COOKIE = "vb_typer_token"
+
 
 def load_or_create_token(paths: AppPaths, override: str | None = None) -> str:
     """Devolve o token da API, criando um arquivo ``0600`` na primeira execução."""

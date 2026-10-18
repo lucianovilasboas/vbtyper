@@ -15,7 +15,7 @@ from vb_typer.adapters.openai import OpenAIAdapter
 from vb_typer.adapters.secrets import SecretsAdapter
 from vb_typer.core.config import AppSettings
 from vb_typer.core.paths import AppPaths
-from vb_typer.core.security import bearer_token, token_matches
+from vb_typer.core.security import TOKEN_COOKIE, bearer_token, token_matches
 from vb_typer.db.session import make_engine, make_session_factory
 from vb_typer.domain.errors import UnauthorizedError
 from vb_typer.services.history import HistoryService
@@ -83,8 +83,10 @@ async def require_token(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> None:
+    """Aceita ``Authorization: Bearer`` ou o cookie de mesma origem do app web."""
     expected = request.app.state.api_token
-    if not token_matches(bearer_token(authorization), expected):
+    provided = bearer_token(authorization) or request.cookies.get(TOKEN_COOKIE)
+    if not token_matches(provided, expected):
         raise UnauthorizedError("Token de acesso ausente ou inválido.")
 
 

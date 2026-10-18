@@ -68,6 +68,10 @@ class AppSettings(BaseSettings):
     cors_origins: tuple[str, ...] = ()
     trust_origin_header: bool = True
 
+    # Interface web (servida pelo próprio backend, na mesma origem).
+    serve_web_ui: bool = True
+    web_dir: Path | None = None
+
     # OpenAI.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_s: float = 120.0

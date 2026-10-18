@@ -44,6 +44,7 @@ def app_settings(tmp_path, monkeypatch) -> AppSettings:
         allowed_hosts=("testserver", "127.0.0.1", "localhost"),
         worker_concurrency=1,
         log_level="WARNING",
+        web_dir=tmp_path / "sem-interface-web",
     )
 
 

@@ -27,10 +27,18 @@ async def test_ready_without_key(client):
     assert response.json()["api_key_configured"] is False
 
 
-async def test_index_points_to_docs(client):
+async def test_index_falls_back_to_json_without_web_ui(client):
     response = await client.get("/")
     assert response.status_code == 200
     assert response.json()["docs"] == "/docs"
+
+
+async def test_info_is_public(client):
+    response = await client.get("/api/v1/info")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["openapi"] == "/api/v1/openapi.json"
+    assert "gpt-transcribe" in body["models"]
 
 
 async def test_openapi_is_available(client):
