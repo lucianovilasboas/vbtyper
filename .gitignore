@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.python-version
+
+# uv / build
+dist/
+build/
+*.spec
+uv.lock.bak
+
+# Testes e cobertura
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Banco e dados locais
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+backend/.env
+.env
+
+# Editores e sistema
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

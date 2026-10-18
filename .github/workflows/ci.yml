@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Sincronizar dependências
+        working-directory: backend
+        run: uv sync --extra dev
+      - name: Lint
+        working-directory: backend
+        run: uv run ruff check .
+      - name: Formatação
+        working-directory: backend
+        run: uv run ruff format --check .
+      - name: Testes
+        working-directory: backend
+        env:
+          # Garante que nenhum teste dependa de uma chave real.
+          OPENAI_API_KEY: ""
+        run: uv run pytest -q
