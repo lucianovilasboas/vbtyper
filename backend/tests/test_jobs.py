@@ -1,0 +1,162 @@
+"""Ciclo de vida dos jobs de transcrição."""
+
+from __future__ import annotations
+
+import asyncio
+
+import httpx
+
+ENDPOINT = "/api/v1/transcription-jobs"
+
+
+def _upload(
+    wav: bytes,
+    *,
+    model: str | None = None,
+    language: str | None = None,
+    filename: str = "recording.wav",
+    content_type: str = "audio/wav",
+):
+    files = {"file": (filename, wav, content_type)}
+    data: dict[str, str] = {}
+    if model:
+        data["model"] = model
+    if language:
+        data["language"] = language
+    return files, data
+
+
+async def test_successful_transcription_is_persisted(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "olá mundo ditado"})
+    )
+    files, data = _upload(make_wav(1.0), model="gpt-transcribe", language="pt")
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    assert response.status_code == 202
+    created = response.json()
+    assert created["status"] in {"queued", "running"}
+    assert created["model"] == "gpt-transcribe"
+
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+    assert job["result"]["text"] == "olá mundo ditado"
+    assert job["result"]["words"] == 3
+    assert job["transcription_id"] == job["result"]["id"]
+    assert job["duration_s"] > 0.5
+    assert job["error"] is None
+
+    items, total = container.history.list()
+    assert total == 1
+    assert items[0].inserted is False
+    assert items[0].audio_path and items[0].audio_path.endswith(".wav")
+    from pathlib import Path
+
+    assert Path(items[0].audio_path).is_file()
+
+
+async def test_empty_audio_is_rejected(client, auth, with_api_key):
+    files, data = _upload(b"", content_type="audio/wav")
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_audio"
+
+
+async def test_oversize_audio_is_rejected(client, auth, container, make_wav, with_api_key):
+    container.settings.max_upload_bytes = 2048
+    files, data = _upload(make_wav(1.0))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "audio_too_large"
+
+
+async def test_unsupported_content_type_is_rejected(client, auth, with_api_key):
+    files, data = _upload(b"nao-e-audio", filename="nota.txt", content_type="text/plain")
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    assert response.status_code == 415
+    assert response.json()["error"]["code"] == "unsupported_media_type"
+
+
+async def test_unknown_model_is_rejected(client, auth, make_wav, with_api_key):
+    files, data = _upload(make_wav(0.5), model="modelo-x")
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_model"
+
+
+async def test_provider_error_marks_job_failed(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(500, json={"error": {"message": "boom interno"}})
+    )
+    files, data = _upload(make_wav(1.0))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    job = await wait_for_job(client, response.json()["id"], auth, {"failed"})
+    assert "500" in job["error"]
+    items, total = container.history.list()
+    assert total == 1
+    assert items[0].error and items[0].inserted is False
+    assert items[0].text == ""
+
+
+async def test_missing_api_key_fails_job(client, auth, make_wav, wait_for_job):
+    files, data = _upload(make_wav(1.0))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    job = await wait_for_job(client, response.json()["id"], auth, {"failed"})
+    assert "Chave OpenAI" in job["error"]
+
+
+async def test_cancel_running_job_prevents_transcription(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.5)
+        return httpx.Response(200, json={"text": "não deveria aparecer"})
+
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(side_effect=slow)
+    files, data = _upload(make_wav(1.0))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    job_id = response.json()["id"]
+    await wait_for_job(client, job_id, auth, {"running"}, timeout=2)
+
+    deleted = await client.delete(f"{ENDPOINT}/{job_id}", headers=auth)
+    assert deleted.status_code == 200
+
+    job = await wait_for_job(client, job_id, auth, {"canceled"})
+    assert job["transcription_id"] is None
+    _, total = container.history.list()
+    assert total == 0
+
+
+async def test_cancel_finished_job_is_a_noop(
+    client, auth, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "pronto"})
+    )
+    files, data = _upload(make_wav(1.0))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    job_id = response.json()["id"]
+    await wait_for_job(client, job_id, auth, {"succeeded"})
+    deleted = await client.delete(f"{ENDPOINT}/{job_id}", headers=auth)
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "succeeded"
+
+
+async def test_unknown_job_returns_404(client, auth):
+    response = await client.get(f"{ENDPOINT}/nao-existe", headers=auth)
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "not_found"
+
+
+async def test_list_jobs(client, auth, make_wav, with_api_key, respx_mock, wait_for_job):
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "um"})
+    )
+    files, data = _upload(make_wav(0.5))
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+    await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+    listing = await client.get(ENDPOINT, headers=auth)
+    assert listing.status_code == 200
+    assert listing.json()["total"] == 1
