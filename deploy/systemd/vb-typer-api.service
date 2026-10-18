@@ -1,0 +1,18 @@
+[Unit]
+Description=VB Typer API (backend local de transcrição)
+Documentation=file://@BACKEND_DIR@/../README.md
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=@BACKEND_DIR@
+Environment=PYTHONUNBUFFERED=1
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=@RUNTIME_DIR@/bus
+ExecStart=@BACKEND_DIR@/.venv/bin/vb-typer-api
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGINT
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

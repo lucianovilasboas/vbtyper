@@ -139,6 +139,35 @@ Resolvidos por `platformdirs` (podem ser sobrescritos por `VB_TYPER_DATA_DIR`,
 O banco é `vb-typer.db` (nome próprio para **não** colidir com o `history.db`
 do app 1.x). Áudios em `audio/AAAA/MM/`, banco e token sempre com modo `0600`.
 
+## Rodar como serviço (systemd de usuário)
+
+Para o backend ficar no ar independentemente de terminal ou sessão do OpenCode:
+
+```bash
+./scripts/install-service.sh
+systemctl --user status vb-typer-api
+journalctl --user -u vb-typer-api -f
+```
+
+O serviço roda `backend/.venv/bin/vb-typer-api` com `WorkingDirectory` no
+backend (para achar o `.env`), `DBUS_SESSION_BUS_ADDRESS` explícito (para o
+cofre) e `Restart=on-failure`. Sobe no login e é habilitado por padrão.
+
+Se `api_key_configured` aparecer `false` logo após o boot, o cofre ainda não
+estava desbloqueado — `systemctl --user restart vb-typer-api` resolve.
+
+Remover:
+
+```bash
+systemctl --user disable --now vb-typer-api
+rm ~/.config/systemd/user/vb-typer-api.service
+systemctl --user daemon-reload
+```
+
+Para manter o serviço ativo mesmo sem login gráfico seria preciso
+`loginctl enable-linger "$USER"` (requer sudo) — normalmente desnecessário num
+desktop.
+
 ## Configuração
 
 Variáveis com prefixo `VB_TYPER_` (veja [`backend/.env.example`](backend/.env.example)):
