@@ -100,6 +100,19 @@ curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: applicatio
 
 Detalhes de parâmetros, erros e exemplos: [`docs/api.md`](docs/api.md).
 
+## Interface web
+
+O backend serve a interface web em <http://127.0.0.1:8765> — mesma origem, sem
+etapa de build (módulos ES puros). Telas: **Ditar** (gravação pelo navegador,
+modelo/idioma, transcrição e cópia), **Histórico** (busca, cópia, exclusão,
+CSV) e **Atividade** (períodos de 7/30/90 dias, 6 meses e 1 ano; métricas e
+gráfico).
+
+Autenticação do navegador: a página é servida com o token num cookie
+**HttpOnly + SameSite=Strict**. O JavaScript nunca vê o token; o backend ainda
+valida `Host` e `Origin`. Requisições programáticas continuam usando
+`Authorization: Bearer`.
+
 ## Importar o histórico do app 1.x
 
 A importação é **somente-leitura** sobre o banco antigo e **idempotente**:
@@ -165,12 +178,12 @@ backend/
     cli/          # importador do app 1.x
   tests/
 docs/             # arquitetura, API e migração
-web/              # cliente web (próxima fase)
+web/              # cliente web (SPA sem build, servida pelo backend)
 desktop/          # clientes Linux/macOS/Windows (próxima fase)
 ```
 
 ## Próximas fases
 
-1. Cliente web consumindo a v1.
-2. Clientes desktop (Linux/macOS/Windows) falando só com a API.
-3. Empacotamento e autostart do backend por sistema operacional.
+1. Clientes desktop (Linux/macOS/Windows) falando só com a API.
+2. Empacotamento e autostart do backend por sistema operacional.
+3. Análise semântica opcional sobre o histórico (assíncrona, opt-in).
