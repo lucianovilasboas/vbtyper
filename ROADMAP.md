@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 19/10/2026 — tudo em `v0.6.0` (backend: 92 testes; desktop:
+Última atualização: 19/10/2026 — tudo em `v0.6.1` (backend: 98 testes; desktop:
 169 testes).
 
 ---
@@ -280,12 +280,15 @@ Avisos: no Windows a tecla "Super" é a tecla Windows (risco de menu Iniciar /
 
 ## 5. Pendências pequenas
 
-- **Ditados gravados pelo navegador ficam com `duration_s = 0`**, e isso agora
-  aparece na contabilidade: no histórico essas linhas mostram **custo US$ 0,0000**
-  porque o custo é calculado pela duração. O 2.x não extrai duração de WebM/OGG
-  (só de WAV, que é o que o cliente desktop manda). Caminho mais curto: o próprio
-  navegador **sabe** a duração (tem o cronômetro) — mandar como campo do
-  formulário no `POST` e o backend usar esse valor. São ~10 linhas.
+- ~~**Ditados gravados pelo navegador ficam com `duration_s = 0`**~~ — **feito em
+  `v0.6.1`.** O navegador passa a enviar `duration_s` (o cronômetro dele) e o
+  backend só usa esse valor **quando a sonda do arquivo não sabe** — o WAV do
+  desktop continua mandando, sem mudança de comportamento. Valor fora de faixa é
+  ignorado: um palpite ruim nunca derruba o ditado. Junto disso: o histórico mostra
+  **`—` em vez de `US$ 0,0000`** quando a duração é desconhecida (0 não é
+  "grátis"), e a **duração média da Atividade** passou a dividir só pelos ditados
+  com duração (`no_duration` no resumo). Os ditados antigos de WebM continuam sem
+  duração — a informação nunca existiu e não há como recuperá-la.
 - **3 linhas de teste no histórico** (ids 98, 99 e 100 — das minhas verificações
   do indicador, incluindo uma chamada real à OpenAI): **ficam**, por decisão do
   Luciano. Não apagar.
