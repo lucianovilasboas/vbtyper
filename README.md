@@ -190,6 +190,14 @@ filtros, CSV, estatísticas (hora/dia/semana/mês, intervalos vazios), permissõ
 dos arquivos e a importação idempotente do app 1.x. A OpenAI é mockada — os
 testes não fazem chamadas faturáveis.
 
+O cliente desktop tem suíte própria, também sem rede:
+
+```bash
+cd desktop
+uv run pytest -q
+uv run ruff check . && uv run ruff format --check .
+```
+
 ## Estrutura
 
 ```
@@ -208,11 +216,29 @@ backend/
   tests/
 docs/             # arquitetura, API e migração
 web/              # cliente web (SPA sem build, servida pelo backend)
-desktop/          # clientes Linux/macOS/Windows (próxima fase)
+desktop/
+  src/vb_typer_desktop/
+    daemon.py     # atalho → gravação → job → inserção no cursor
+    api.py        # cliente REST e leitura do token
+    audio.py      # arecord, validação e reparo do WAV
+    hotkey.py     # máquina de estados do Ctrl+Super
+    control.py    # socket Unix usado pela bandeja
+    tray.py       # bandeja GTK3 (processo separado)
+    ui.py         # abre a interface no navegador
+    platform/     # adaptadores por sistema (hoje só linux_x11)
+  tray/ assets/
+  tests/
 ```
+
+## Cliente desktop (Linux/X11)
+
+Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
+inserir. O texto vai direto no ponto do cursor do aplicativo em foco, por XTEST —
+não há área de transferência nem colagem. Detalhes em
+[`desktop/README.md`](desktop/README.md).
 
 ## Próximas fases
 
-1. Clientes desktop (Linux/macOS/Windows) falando só com a API.
-2. Empacotamento e autostart do backend por sistema operacional.
+1. Cliente desktop para macOS e Windows, pela camada `platform/` já existente.
+2. Empacotamento one-file e autostart do cliente desktop.
 3. Análise semântica opcional sobre o histórico (assíncrona, opt-in).

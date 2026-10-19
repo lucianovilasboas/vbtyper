@@ -40,8 +40,21 @@ uv run vb-typer-api --print-token  # token Bearer (sensível)
 uv run vb-typer-import --source ~/.local/share/vb-typer/history.db
 ```
 
+O cliente desktop é um projeto `uv` próprio, para o backend não herdar
+dependências de plataforma:
+
+```bash
+cd desktop
+uv sync --extra dev
+uv run pytest -q
+uv run ruff check . && uv run ruff format --check .
+uv run vb-typer-desktop            # ditado por Ctrl+Super, com bandeja
+uv run vb-typer-desktop --status   # API, token e ambiente
+uv run vb-typer-desktop --self-test
+```
+
 Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
-`pytest` têm de passar.
+`pytest` têm de passar **nos dois projetos** (backend e desktop).
 
 ## Convenções
 
@@ -78,6 +91,15 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
    vazios) em Python; semanas respeitam `week_start`.
 10. Erros de domínio estendem `DomainError` (com `status_code` e `code`) e são
     convertidos no handler global para `{"error": {code, message, request_id}}`.
+11. O cliente desktop insere texto **direto no ponto do cursor** (XTEST no Linux).
+    É proibido colar, usar área de transferência ou ativar janela — há um teste de
+    invariante (`desktop/tests/test_source_invariants.py`) que varre o código-fonte
+    e falha se qualquer um desses aparecer.
+12. O cliente desktop usa socket de controle próprio
+    (`vb-typer-desktop-<uid>.sock`), distinto do `vb-typer-<uid>.sock` do 1.x: os
+    dois rodam em paralelo e não podem se confundir nem disputar o arquivo.
+13. O cliente desktop não conhece o cofre nem a chave: fala só com a API pelo
+    token em `~/.config/vb-typer/api-token`. Nada de SQLite, nada de OpenAI direta.
 
 ## Testes
 
@@ -91,6 +113,11 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
 - Cubra caminho feliz **e** falha: áudio vazio/excedente/formato inválido, chave
   ausente, erro HTTP do provedor, cancelamento sem transcrição tardia, token e
   origem inválidos.
+
+No cliente desktop valem as mesmas regras, mais: use os dublês de
+`desktop/tests/fakes.py` (plataforma, API e gravador) — nenhum teste abre
+microfone, conexão X ou rede. A inserção real só se verifica à mão, numa sessão
+X11 com uma janela de texto em foco.
 
 ## Git
 
@@ -120,5 +147,18 @@ desbloqueado: `systemctl --user restart vb-typer-api` resolve.
 - Backend v1 completo (jobs, histórico, estatísticas, configurações, CSV,
   importador do 1.x) — 60 testes.
 - Cliente web (Ditar / Histórico / Atividade) servido na mesma origem.
-- Próximo: clientes desktop. Antes de escolher a stack, alinhar com o usuário
-  (Python/Tk reaproveitando X11 vs. Tauri/Electron multiplataforma).
+- Cliente desktop Linux/X11 completo (atalho, gravação, job, inserção no cursor,
+  bandeja, interface no navegador) — 93 testes. Verificado à mão: XTEST com
+  acentos, ciclo de vida do daemon e ditado ponta a ponta.
+- Próximo: macOS e Windows pela camada `desktop/src/vb_typer_desktop/platform/`
+  (adaptadores de áudio, inserção e bandeja), depois empacotamento one-file.
+
+### Decisões já fechadas do cliente desktop
+
+- Stack Python com `httpx` para a API; sem Tk — a interface é a SPA no navegador
+  (modo app quando houver Chromium, senão janela nova no Firefox).
+- **Sem `pynput` no Linux**: o listener de XRecord não encerra de forma confiável
+  (`stop()` retorna, a thread continua viva e cada pausa deixaria contexto X
+  pendurado). O atalho é observado consultando `XQueryKeymap` a cada 25 ms.
+- `arecord` leva ~300 ms para abrir o dispositivo: os primeiros instantes de uma
+  gravação muito curta podem faltar (mesmo comportamento do 1.x).
