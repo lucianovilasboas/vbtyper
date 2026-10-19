@@ -6,6 +6,7 @@ OpenAI fica em ``vb_typer.workers.manager``.
 
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,26 @@ from vb_typer.domain.errors import DomainError, InvalidModelError, NotFoundError
 from vb_typer.repositories.jobs import JobRepository
 from vb_typer.repositories.transcriptions import TranscriptionRepository
 from vb_typer.services.common import new_transcription
+
+
+def _duration_or_hint(probed: float, hint: float | None, limit: float) -> float:
+    """Duração do áudio: a sonda do arquivo manda, o cliente só preenche a lacuna.
+
+    O navegador grava WebM/OGG, formatos em que a duração não vem no cabeçalho —
+    por isso ele informa o tempo que cronometrou. Um valor fora de faixa é
+    ignorado de propósito: um palpite ruim nunca pode derrubar o ditado.
+    """
+    if probed > 0:
+        return probed
+    if hint is None:
+        return 0.0
+    try:
+        value = float(hint)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value) or value <= 0 or value > limit:
+        return 0.0
+    return round(value, 3)
 
 
 @dataclass(frozen=True)
@@ -63,6 +84,7 @@ class TranscriptionService:
         model: str | None,
         language: str | None,
         mode: str | None = None,
+        duration_s: float | None = None,
     ) -> Job:
         if model and model not in self.settings.allowed_models:
             raise InvalidModelError(
@@ -73,6 +95,7 @@ class TranscriptionService:
             raise DomainError("Idioma inválido.", code="invalid_language")
 
         stored = self.audio_store.save(data, content_type, filename)
+        duration = _duration_or_hint(stored.duration_s, duration_s, self.settings.max_audio_seconds)
         now = local_stamp()
         with self.session_factory() as session:
             # O modo padrão é a escolha do usuário na interface, não a do ambiente:
@@ -94,7 +117,7 @@ class TranscriptionService:
                 filename=stored.filename,
                 content_type=stored.content_type,
                 size_bytes=stored.size,
-                duration_s=stored.duration_s,
+                duration_s=duration,
                 audio_path=str(stored.path),
             )
             self.jobs.add(session, job)

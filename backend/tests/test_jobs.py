@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 
 ENDPOINT = "/api/v1/transcription-jobs"
 
@@ -160,3 +161,56 @@ async def test_list_jobs(client, auth, make_wav, with_api_key, respx_mock, wait_
     listing = await client.get(ENDPOINT, headers=auth)
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
+
+
+async def test_duration_from_client_fills_webm_gap(
+    client, auth, with_api_key, respx_mock, wait_for_job
+):
+    """WebM não traz duração no cabeçalho: vale o cronômetro do navegador."""
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "doze segundos e meio"})
+    )
+    files = {"file": ("gravacao.webm", b"\x1aE\xdf\xa3webm-sem-cabecalho", "audio/webm")}
+    response = await client.post(ENDPOINT, headers=auth, files=files, data={"duration_s": "12.5"})
+
+    assert response.status_code == 202
+    created = response.json()
+    assert created["duration_s"] == 12.5
+
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+    assert job["result"]["duration_s"] == 12.5
+    assert job["result"]["cost_usd"] > 0
+
+
+async def test_wav_header_wins_over_client_hint(
+    client, auth, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """O que o arquivo diz manda: o WAV do desktop não é sobrescrito pelo cliente."""
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "meio segundo"})
+    )
+    files, data = _upload(make_wav(0.5))
+    data["duration_s"] = "99"
+
+    response = await client.post(ENDPOINT, headers=auth, files=files, data=data)
+
+    assert response.status_code == 202
+    assert response.json()["duration_s"] == 0.5
+    await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+
+
+@pytest.mark.parametrize("hint", ["0", "-3", "999999"])
+async def test_absurd_duration_hint_is_ignored(
+    client, auth, with_api_key, respx_mock, wait_for_job, hint
+):
+    """Palpite ruim nunca derruba o ditado: só é ignorado."""
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "sem duração confiável"})
+    )
+    files = {"file": ("gravacao.webm", b"\x1aE\xdf\xa3webm", "audio/webm")}
+
+    response = await client.post(ENDPOINT, headers=auth, files=files, data={"duration_s": hint})
+
+    assert response.status_code == 202
+    assert response.json()["duration_s"] == 0.0
+    await wait_for_job(client, response.json()["id"], auth, {"succeeded"})

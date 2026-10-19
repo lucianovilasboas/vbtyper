@@ -102,6 +102,9 @@ class StatsService:
                     func.coalesce(func.avg(func.nullif(Transcription.transcribe_ms, 0)), 0.0),
                     func.min(Transcription.created_at),
                     func.max(Transcription.created_at),
+                    # Ditados com duração conhecida: a média ignora os de WebM/OGG
+                    # antigos, que ficaram com 0 s (ver `_duration_or_hint`).
+                    func.coalesce(func.sum(case((Transcription.duration_s > 0, 1), else_=0)), 0),
                 ).where(*window)
             ).one()
             priced = session.execute(
@@ -125,6 +128,7 @@ class StatsService:
             "avg_ms": float(row[7]),
             "first_at": row[8],
             "last_at": row[9],
+            "no_duration": max(0, total - int(row[10])),
             "cost_usd": sum(cost_usd(model, seconds) for model, seconds in priced),
         }
 
@@ -200,10 +204,11 @@ class StatsService:
         peak = max(hours, key=lambda item: item["count"], default={"label": "—", "count": 0})
         p95 = latencies[max(0, math.ceil(0.95 * len(latencies)) - 1)] if latencies else 0
         total = summary["total"]
+        dated = max(0, total - summary["no_duration"])
         return {
             "words_per_minute": (summary["words"] / minutes) if minutes else 0.0,
             "dictations_per_active_day": (total / active_days) if active_days else 0.0,
-            "average_duration": (summary["seconds"] / total) if total else 0.0,
+            "average_duration": (summary["seconds"] / dated) if dated else 0.0,
             "peak_hour": peak["label"],
             "peak_hour_count": peak["count"],
             "api_average_ms": summary["avg_ms"],

@@ -202,6 +202,8 @@ async function startRecording() {
 }
 
 async function stopAndTranscribe() {
+  // Medido antes de parar o gravador: é a duração real do que foi capturado.
+  const recordedSeconds = (performance.now() - state.recordingStartedAt) / 1000;
   $("record").disabled = true;
   stopTimer();
   stopMeter();
@@ -222,10 +224,10 @@ async function stopAndTranscribe() {
     $("record").disabled = false;
     return;
   }
-  await submit(blob);
+  await submit(blob, recordedSeconds);
 }
 
-async function submit(blob) {
+async function submit(blob, duration) {
   setStatus("Enviando áudio para transcrição…", "busy");
   $("cancel").hidden = false;
   try {
@@ -233,6 +235,7 @@ async function submit(blob) {
       model: state.settings.model,
       language: state.settings.language,
       mode: state.settings.mode,
+      duration,
     });
     state.jobId = job.id;
     handleJobResult(await pollJob(job.id));
@@ -441,7 +444,7 @@ function historyRow(item) {
   row.append(words);
 
   const cost = cell("num");
-  cost.textContent = formatCost(item.cost_usd);
+  cost.textContent = item.duration_s ? formatCost(item.cost_usd) : "—";
   cost.title = `tarifa de ${item.model}`;
   row.append(cost);
 
@@ -519,9 +522,11 @@ function historyRow(item) {
 async function loadHistorySummary() {
   try {
     const data = await api.stats({ granularity: "day" });
+    const unknown = data.summary.no_duration;
     $("history-summary").textContent =
       `${number.format(data.summary.total)} ditados · ${humanSeconds(data.summary.seconds)} de áudio` +
-      ` · ${number.format(data.summary.words)} palavras · ${formatCost(data.summary.cost_usd)} estimados`;
+      ` · ${number.format(data.summary.words)} palavras · ${formatCost(data.summary.cost_usd)} estimados` +
+      (unknown ? ` · ${number.format(unknown)} sem duração` : "");
   } catch {
     $("history-summary").textContent = "—";
   }
@@ -663,6 +668,9 @@ function renderInsights(data) {
     `p95 da API: ${number.format(insights.api_p95_ms)} ms`,
     `falhas: ${number.format(data.summary.failures)}`,
   ];
+  if (data.summary.no_duration) {
+    parts.push(`${number.format(data.summary.no_duration)} sem duração`);
+  }
   $("insights").textContent = parts.join(" · ");
 }
 

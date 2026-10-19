@@ -26,6 +26,7 @@ class StatsSummary(BaseModel):
     avg_ms: float
     first_at: str | None = None
     last_at: str | None = None
+    no_duration: int
     cost_usd: float
 
 

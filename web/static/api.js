@@ -56,11 +56,17 @@ export const api = {
   patchSettings: (changes) => request("/settings", { method: "PATCH", body: changes }),
   testConnection: () => request("/settings/test", { method: "POST" }),
 
-  createJob(file, { model, language } = {}) {
+  createJob(file, { model, language, mode, duration } = {}) {
     const form = new FormData();
     form.append("file", file, file.name || "gravacao.webm");
     if (model) form.append("model", model);
     if (language) form.append("language", language);
+    if (mode) form.append("mode", mode);
+    // WebM/OGG não trazem a duração no cabeçalho: quem sabe é o cronômetro do
+    // navegador. O backend só usa isto quando não consegue ler do arquivo.
+    if (Number.isFinite(duration) && duration > 0) {
+      form.append("duration_s", duration.toFixed(3));
+    }
     return request("/transcription-jobs", { method: "POST", body: form });
   },
   getJob: (id) => request(`/transcription-jobs/${id}`),

@@ -123,3 +123,19 @@ async def test_invalid_granularity_is_rejected(client, auth):
     response = await client.get("/api/v1/stats", headers=auth, params={"granularity": "semana"})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+async def test_average_duration_ignores_unknown_durations(client, auth, container):
+    """Ditados sem duração (WebM antigo) não podem puxar a média para baixo."""
+    now = datetime.now()
+    _record(container, text="vinte", when=now, duration=20)
+    _record(container, text="quarenta", when=now, duration=40)
+    _record(container, text="sem duração", when=now, duration=0)
+
+    response = await client.get("/api/v1/stats", headers=auth)
+    body = response.json()
+
+    assert body["summary"]["total"] == 3
+    assert body["summary"]["no_duration"] == 1
+    assert body["summary"]["seconds"] == 60.0
+    assert body["insights"]["average_duration"] == 30.0
