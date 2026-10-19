@@ -18,6 +18,53 @@ que estiver marcado como feito.
 - **Estruturado:** extrai entidades específicas e devolve um JSON conforme um
   esquema definido pelo usuário.
 
+### Literal e Inteligente: **feito em `v0.5.0`**
+
+O padrão continua sendo **literal**; o Inteligente só entra quando o usuário
+escolhe (tela de Configurações ou campo `mode` no job). O que foi implementado:
+
+- coluna `mode` no job, no histórico e nas configurações; `raw_text` guarda o
+  texto reconhecido, para auditar o ajuste e poder voltar atrás (migração
+  `0002_modes`);
+- o Inteligente é uma segunda chamada (`/chat/completions`), com a instrução em
+  `services/normalize.py`, validada contra a API real: "dezoito de outubro de
+  dois mil e vinte e cinco às três e meia da tarde" → **18/10/2025 às 15h30**,
+  "cinquenta reais e vinte centavos … trinta por cento" → **R$ 50,20 … 30%**,
+  "o c p v … c p f" → **CSV … CPF**;
+- **pulo por heurística:** texto sem número/data/valor/sigla não gasta a segunda
+  chamada (prosa comum sai com a latência de hoje). A checagem é conservadora:
+  um falso "sim" custa latência, um falso "não" custaria o formato pedido;
+- **falha do ajuste entrega o literal** (nunca perde o ditado) e registra no log;
+- **conexão reaproveitada** no adaptador da OpenAI: antes cada ditado abria um
+  cliente HTTP novo, pagando um handshake TLS;
+- a dica curta de formatação (`prompt`) só vai na transcrição quando o modo é
+  smart — no literal nada enviesa o reconhecimento.
+
+Falta desta parte: mostrar o **texto reconhecido** lado a lado no histórico (hoje
+tem um "ver o texto reconhecido") e o mesmo modo no cliente desktop — este já lê
+a configuração e envia o modo, então está pronto.
+
+### Estruturado: pendente, e é o que falta decidir
+
+Continua como estava: **não** vai para o cursor (devolve um documento, para a
+tela e o histórico), exige **duas etapas** (a transcrição não aceita esquema
+JSON) e depende de duas decisões do Luciano:
+
+1. o esquema é **colado como JSON** ou montado por um **construtor de campos**?
+2. esquemas nomeados ("despesa", "reunião", "tarefa") para escolher ao ditar?
+
+Fases: colunas de esquema e resultado estruturado → validador que transforma o
+esquema do usuário em formato *estrito* aceito pela OpenAI → tela para ver,
+copiar e baixar o JSON → exportação.
+
+### Opcionais registrados
+
+- **Cache do ajuste por texto** (tabela pequena com validade): acerta quando se
+  repete uma frase; ganho baixo, custo baixo.
+- **Cache do resultado da transcrição**: não faz sentido (dois ditados nunca são
+  iguais).
+- O áudio já é arquivado localmente, o que cobre a outra metade (reenvio).
+
 ### O ponto de arquitetura que precisa ficar claro
 
 São **dois tipos de coisa**, não três variantes do mesmo:

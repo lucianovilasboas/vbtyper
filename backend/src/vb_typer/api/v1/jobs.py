@@ -46,6 +46,7 @@ async def create_job(
     file: Annotated[UploadFile, File(description="Áudio a transcrever.")],
     model: Annotated[str | None, Form()] = None,
     language: Annotated[str | None, Form()] = None,
+    mode: Annotated[str | None, Form()] = None,
 ) -> JobRead:
     data = await _read_upload(file, container.settings.max_upload_bytes)
     job = await asyncio.to_thread(
@@ -55,6 +56,7 @@ async def create_job(
         content_type=file.content_type or "",
         model=model,
         language=language,
+        mode=mode,
     )
     await manager.submit(job.id)
     return job_to_read(job)

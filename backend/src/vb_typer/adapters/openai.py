@@ -1,4 +1,4 @@
-"""Adaptador da API OpenAI (transcrição e verificação de credencial)."""
+"""Adaptador da API OpenAI (transcrição, ajuste de texto e verificação)."""
 
 from __future__ import annotations
 
@@ -13,9 +13,19 @@ class OpenAIAdapter:
     def __init__(self, base_url: str, timeout_s: float = 120.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
+        # Um cliente só, reaproveitado: reabrir a conexão a cada ditado custaria
+        # um handshake TLS novo (~100–300 ms) no caminho até o texto.
+        self._client: httpx.AsyncClient | None = None
 
-    def _client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout_s)
+    def _connection(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout_s)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
 
     @staticmethod
     def _detail(response: httpx.Response) -> str:
@@ -31,6 +41,15 @@ class OpenAIAdapter:
                 return error[:300]
         return ""
 
+    async def _send(self, method: str, url: str, **kwargs) -> httpx.Response:
+        client = self._connection()
+        try:
+            return await client.request(method, url, **kwargs)
+        except httpx.TimeoutException as exc:
+            raise ProviderError("Tempo limite excedido ao falar com a OpenAI.") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderError("Falha de conexão com a API da OpenAI.") from exc
+
     async def transcribe(
         self,
         *,
@@ -40,22 +59,18 @@ class OpenAIAdapter:
         model: str,
         language: str,
         api_key: str,
+        prompt: str | None = None,
     ) -> dict:
         if not api_key:
             raise ApiKeyMissingError("Chave OpenAI ausente. Configure-a no cofre do sistema.")
         files = {"file": (filename or "recording.wav", audio, content_type or "audio/wav")}
         data = {"model": model, "language": language}
+        if prompt:
+            data["prompt"] = prompt
         headers = {"Authorization": f"Bearer {api_key}"}
-        try:
-            async with self._client() as client:
-                response = await client.post(
-                    "/audio/transcriptions", files=files, data=data, headers=headers
-                )
-        except httpx.TimeoutException as exc:
-            raise ProviderError("Tempo limite excedido ao falar com a OpenAI.") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderError("Falha de conexão com a API da OpenAI.") from exc
-
+        response = await self._send(
+            "POST", "/audio/transcriptions", files=files, data=data, headers=headers
+        )
         if response.status_code >= 400:
             raise ProviderError(self._message_for(response))
 
@@ -68,18 +83,42 @@ class OpenAIAdapter:
             raise ProviderError("A resposta da OpenAI não contém texto de transcrição.")
         return {"text": text}
 
+    async def normalize(self, *, text: str, model: str, instructions: str, api_key: str) -> str:
+        """Ajusta um texto já transcrito (modo inteligente); não usa áudio."""
+        if not api_key:
+            raise ApiKeyMissingError("Chave OpenAI ausente. Configure-a no cofre do sistema.")
+        body = {
+            "model": model,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": text},
+            ],
+        }
+        headers = {"Authorization": f"Bearer {api_key}"}
+        response = await self._send("POST", "/chat/completions", json=body, headers=headers)
+        if response.status_code >= 400:
+            raise ProviderError(self._message_for(response))
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ProviderError("A OpenAI devolveu uma resposta inválida.") from exc
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise ProviderError("A resposta do ajuste não contém texto.")
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        adjusted = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(adjusted, str) or not adjusted.strip():
+            raise ProviderError("O ajuste do texto voltou vazio.")
+        return adjusted.strip()
+
     async def check(self, api_key: str) -> int:
         """GET somente leitura em ``/models``; devolve a quantidade de modelos."""
         if not api_key:
             raise ApiKeyMissingError("Chave OpenAI ausente. Configure-a no cofre do sistema.")
         headers = {"Authorization": f"Bearer {api_key}"}
-        try:
-            async with self._client() as client:
-                response = await client.get("/models", headers=headers)
-        except httpx.TimeoutException as exc:
-            raise ProviderError("Tempo limite excedido ao falar com a OpenAI.") from exc
-        except httpx.HTTPError as exc:
-            raise ProviderError("Falha de conexão com a API da OpenAI.") from exc
+        response = await self._send("GET", "/models", headers=headers)
         if response.status_code >= 400:
             raise ProviderError(self._message_for(response))
         try:

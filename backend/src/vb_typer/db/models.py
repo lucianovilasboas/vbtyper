@@ -23,6 +23,10 @@ class Transcription(Base):
     transcribe_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     insert_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     inserted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Como o texto foi entregue ("literal" ou "smart") e o que a transcrição
+    # devolveu antes do ajuste, para auditar e poder voltar atrás.
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="literal")
+    raw_text: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
 
     # Rastreabilidade da importação do app 1.x (idempotência).
@@ -46,6 +50,7 @@ class Job(Base):
 
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     language: Mapped[str] = mapped_column(String(16), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="literal")
     filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     content_type: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -65,5 +70,6 @@ class AppSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     language: Mapped[str] = mapped_column(String(16), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="literal")
     week_start: Mapped[str] = mapped_column(String(16), nullable=False, default="monday")
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)

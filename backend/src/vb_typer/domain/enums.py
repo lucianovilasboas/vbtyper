@@ -17,6 +17,18 @@ class JobStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class TranscriptionMode(StrEnum):
+    """Como o texto ditado é entregue.
+
+    ``LITERAL`` preserva exatamente as palavras reconhecidas (padrão);
+    ``SMART`` passa o texto por um ajuste que converte datas, números, valores e
+    siglas para formatos convencionais.
+    """
+
+    LITERAL = "literal"
+    SMART = "smart"
+
+
 TERMINAL_STATUSES = frozenset({JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELED})
 
 

@@ -24,6 +24,7 @@ DEFAULT_ALLOWED_CONTENT_TYPES = (
 )
 
 WEEK_STARTS = ("monday", "sunday")
+TRANSCRIPTION_MODES = ("literal", "smart")
 
 
 def _split_csv(value: Any) -> Any:
@@ -85,6 +86,11 @@ class AppSettings(BaseSettings):
     allowed_content_types: tuple[str, ...] = DEFAULT_ALLOWED_CONTENT_TYPES
     default_model: str = "gpt-4o-mini-transcribe"
     default_language: str = "pt"
+    # Modo de transcrição padrão: literal (as palavras reconhecidas como vieram).
+    # O modo inteligente só entra quando o cliente pede.
+    default_mode: str = "literal"
+    # Modelo do ajuste do modo inteligente (só texto, então é outro modelo).
+    smart_model: str = "gpt-4o-mini"
     keep_audio: bool = True
     week_start: str = "monday"
 
@@ -108,6 +114,14 @@ class AppSettings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in WEEK_STARTS:
             raise ValueError(f"week_start deve ser um de {WEEK_STARTS}")
+        return normalized
+
+    @field_validator("default_mode")
+    @classmethod
+    def _parse_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in TRANSCRIPTION_MODES:
+            raise ValueError(f"default_mode deve ser um de {TRANSCRIPTION_MODES}")
         return normalized
 
     @field_validator("log_level")

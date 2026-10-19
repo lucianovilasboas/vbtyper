@@ -34,18 +34,20 @@ Códigos: `unauthorized` (401), `forbidden` (403), `invalid_host` (400),
 ### `GET /settings`
 
 ```json
-{ "model": "gpt-4o-mini-transcribe", "language": "pt", "week_start": "monday",
+{ "model": "gpt-4o-mini-transcribe", "language": "pt", "mode": "literal", "week_start": "monday",
   "api_key_configured": true, "allowed_models": ["gpt-4o-mini-transcribe", "gpt-transcribe"] }
 ```
 
 ### `PATCH /settings`
 
 ```json
-{ "model": "gpt-transcribe", "language": "en", "week_start": "sunday" }
+{ "model": "gpt-transcribe", "language": "en", "mode": "smart", "week_start": "sunday" }
 ```
 
 Todos os campos são opcionais. `model` precisa estar em `allowed_models`
-(`invalid_model`); `week_start` é `monday` ou `sunday`.
+(`invalid_model`); `week_start` é `monday` ou `sunday`; `mode` é `literal` ou
+`smart` (`invalid_mode`). O modo vale para os próximos ditados — inclusive os do
+cliente desktop, que lê esta configuração antes de cada envio.
 
 ### `POST /settings/test`
 
@@ -66,11 +68,12 @@ Faz um `GET` somente leitura em `/models` da OpenAI. Não transcreve áudio.
 | `file` | sim | áudio (wav, webm, ogg, mp3, m4a); até 25 MB |
 | `model` | não | padrão: configuração atual |
 | `language` | não | padrão: `pt` |
+| `mode` | não | `literal` (padrão) ou `smart`; padrão vem de `/settings` |
 
 ```json
 { "id": "3f0c…", "status": "queued", "created_at": "2026-10-18T18:44:02",
-  "model": "gpt-transcribe", "language": "pt", "size_bytes": 32044,
-  "duration_s": 1.0, "result": null }
+  "model": "gpt-transcribe", "language": "pt", "mode": "literal",
+  "size_bytes": 32044, "duration_s": 1.0, "result": null }
 ```
 
 ### `GET /transcription-jobs/{id}`
@@ -108,6 +111,7 @@ Cancela. Jobs já terminais são devolvidos sem alteração.
 ```json
 { "items": [ { "id": 12, "created_at": "2026-10-18T18:44:02", "text": "olá", "words": 1,
   "duration_s": 1.0, "audio_bytes": 32044, "model": "gpt-transcribe", "language": "pt",
+  "mode": "smart", "raw_text": "o c p f dele é quatro dois um",
   "transcribe_ms": 1200, "insert_ms": 240, "inserted": true, "error": null } ],
   "total": 1, "limit": 20, "offset": 0 }
 ```

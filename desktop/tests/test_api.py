@@ -36,13 +36,14 @@ def test_create_job_sends_multipart_with_bearer():
     )
     client = api.ApiClient(token="segredo")
     job = client.create_job(
-        b"RIFF", "audio.wav", "audio/wav", model="gpt-transcribe", language="pt"
+        b"RIFF", "audio.wav", "audio/wav", model="gpt-transcribe", language="pt", mode="smart"
     )
     assert (job.id, job.status) == ("job-1", "queued")
     request = route.calls[0].request
     assert request.headers["authorization"] == "Bearer segredo"
     assert b'name="model"' in request.content
     assert b"gpt-transcribe" in request.content
+    assert b"smart" in request.content
     assert b'filename="audio.wav"' in request.content
     client.close()
 
@@ -136,19 +137,25 @@ def test_network_failure_becomes_api_error():
 
 
 @respx.mock
-def test_current_model_language_falls_back_on_failure():
+def test_current_options_falls_back_on_failure():
     respx.get(f"{BASE}/api/v1/settings").mock(side_effect=httpx.ConnectError("off"))
-    assert api.ApiClient(token="t").current_model_language() == ("", "")
+    assert api.ApiClient(token="t").current_options() == ("", "", "")
 
 
 @respx.mock
-def test_current_model_language_reads_settings():
+def test_current_options_read_settings():
     respx.get(f"{BASE}/api/v1/settings").mock(
         return_value=httpx.Response(
-            200, json={"model": "gpt-transcribe", "language": "en", "api_key_configured": True}
+            200,
+            json={
+                "model": "gpt-transcribe",
+                "language": "en",
+                "mode": "smart",
+                "api_key_configured": True,
+            },
         )
     )
-    assert api.ApiClient(token="t").current_model_language() == ("gpt-transcribe", "en")
+    assert api.ApiClient(token="t").current_options() == ("gpt-transcribe", "en", "smart")
 
 
 def test_no_token_means_no_authorization_header():

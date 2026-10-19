@@ -17,6 +17,7 @@ def _read(container: ContainerDep) -> SettingsRead:
     sample = SettingsRead(
         model=row.model,
         language=row.language,
+        mode=row.mode,
         week_start=row.week_start,
         api_key_configured=container.transcription.api_key_present(),
         allowed_models=list(container.settings.allowed_models),
@@ -32,7 +33,10 @@ def read_settings(container: ContainerDep) -> SettingsRead:
 @router.patch("", response_model=SettingsRead)
 def update_settings(payload: SettingsUpdate, container: ContainerDep) -> SettingsRead:
     container.settings_service.update(
-        model=payload.model, language=payload.language, week_start=payload.week_start
+        model=payload.model,
+        language=payload.language,
+        mode=payload.mode,
+        week_start=payload.week_start,
     )
     return _read(container)
 

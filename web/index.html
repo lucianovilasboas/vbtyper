@@ -49,6 +49,7 @@
           <div class="hotkey">
             <span class="key" id="chip-model">—</span>
             <span class="key" id="chip-language">—</span>
+            <span class="key" id="chip-mode">—</span>
             <button class="ghost small" id="go-settings" type="button">Ajustar</button>
           </div>
           <p class="theme-help" id="key-state"></p>
@@ -220,6 +221,13 @@
             <div class="field-row">
               <div>Idioma<span>Código de duas letras, como <code>pt</code> ou <code>en</code>.</span></div>
               <input id="language" type="text" maxlength="16" placeholder="pt" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <div>Modo de transcrição<span id="mode-help">Literal entrega exatamente o que foi reconhecido.</span></div>
+              <select id="mode">
+                <option value="literal">Literal</option>
+                <option value="smart">Inteligente</option>
+              </select>
             </div>
             <div class="field-row">
               <div>Início da semana<span>Como as semanas são agrupadas no histórico e nas estatísticas.</span></div>

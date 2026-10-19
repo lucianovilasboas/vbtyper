@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from vb_typer.core.config import WEEK_STARTS, AppSettings
+from vb_typer.core.config import TRANSCRIPTION_MODES, WEEK_STARTS, AppSettings
 from vb_typer.core.timeutil import local_stamp
 from vb_typer.db.models import AppSetting
 from vb_typer.domain.errors import DomainError, InvalidModelError
@@ -23,6 +23,7 @@ class SettingsService:
                     id=1,
                     model=self.settings.default_model,
                     language=self.settings.default_language,
+                    mode=self.settings.default_mode,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -36,6 +37,7 @@ class SettingsService:
         *,
         model: str | None = None,
         language: str | None = None,
+        mode: str | None = None,
         week_start: str | None = None,
     ) -> AppSetting:
         with self.session_factory() as session:
@@ -45,6 +47,7 @@ class SettingsService:
                     id=1,
                     model=self.settings.default_model,
                     language=self.settings.default_language,
+                    mode=self.settings.default_mode,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -60,6 +63,13 @@ class SettingsService:
                 if not 2 <= len(normalized) <= 16:
                     raise DomainError("Idioma inválido.", code="invalid_language")
                 row.language = normalized
+            if mode is not None:
+                normalized = mode.strip().lower()
+                if normalized not in TRANSCRIPTION_MODES:
+                    raise DomainError(
+                        f"Modo inválido. Use um de: {TRANSCRIPTION_MODES}.", code="invalid_mode"
+                    )
+                row.mode = normalized
             if week_start is not None:
                 normalized = week_start.strip().lower()
                 if normalized not in WEEK_STARTS:

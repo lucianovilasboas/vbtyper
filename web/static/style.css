@@ -221,6 +221,10 @@ h1, h2 { margin: 0; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; 
 .row-actions button:hover { background: var(--panel-2); color: var(--ink); }
 .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.68rem; background: var(--accent-soft); color: var(--accent-deep); }
 .badge.error { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); }
+.badge.smart { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+details.raw { margin-top: 6px; }
+details.raw summary { cursor: pointer; color: var(--muted); font-size: 0.76rem; }
+details.raw p { margin: 6px 0 0; }
 
 /* ------------------------------------------------------------ configurações */
 

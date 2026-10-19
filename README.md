@@ -63,6 +63,7 @@ Recomenda-se o fluxo de *tarefa* (assíncrono, cancelável):
 # 1) envia o áudio -> 202 + job_id
 curl -sS -H "Authorization: Bearer $TOKEN" \
      -F "file=@gravacao.wav" -F "model=gpt-4o-mini-transcribe" -F "language=pt" \
+     -F "mode=literal" \
      http://127.0.0.1:8765/api/v1/transcription-jobs
 
 # 2) acompanha o estado/resultado
@@ -82,6 +83,18 @@ curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: applicatio
      -d '{"inserted": true, "insert_ms": 240}' \
      http://127.0.0.1:8765/api/v1/transcriptions/<id>
 ```
+
+O campo `mode` escolhe como o texto sai — e o **padrão é `literal`**:
+
+| `mode` | O que entrega |
+|---|---|
+| `literal` (padrão) | exatamente as palavras reconhecidas |
+| `smart` | mesma transcrição, passada por um ajuste que converte datas, números, valores e siglas para formatos convencionais (`18/10/2025`, `R$ 50,20`, `30%`, `CPF`) |
+
+No modo `smart`, o texto reconhecido **também** fica guardado em `raw_text`, e o
+histórico mostra os dois. Se o ajuste falhar, o ditado é entregue literal — nunca
+se perde uma fala. Textos sem nada a converter (prosa comum) pulam o ajuste e não
+pagam a latência extra. O padrão do modo fica em `/api/v1/settings`.
 
 ### Rotas principais
 

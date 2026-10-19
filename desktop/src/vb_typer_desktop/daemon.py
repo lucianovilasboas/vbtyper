@@ -43,6 +43,7 @@ class Daemon:
         platform: Platform | None = None,
         model: str = "",
         language: str = "",
+        mode: str = "",
         notify_fn=None,
         open_ui_fn=None,
         preferences: Preferences | None = None,
@@ -58,6 +59,7 @@ class Daemon:
         self._open_ui_fn = open_ui_fn or self._default_open_ui
         self.poll_interval = poll_interval
         self.job_timeout = job_timeout
+        self.mode = mode
         self.state = HotkeyState()
         self.lock = threading.RLock()
         self.busy = False
@@ -304,19 +306,24 @@ class Daemon:
 
     # ------------------------------------------------------------ transcrição
 
-    def _options(self) -> tuple[str | None, str]:
-        """Modelo e idioma vigentes na interface; a falha não impede o ditado."""
-        model, language = self.api.current_model_language()
-        return (model or self.model or None), (language or self.language or "pt")
+    def _options(self) -> tuple[str | None, str, str | None]:
+        """Modelo, idioma e modo vigentes na interface; a falha não impede o ditado."""
+        model, language, mode = self.api.current_options()
+        return (
+            model or self.model or None,
+            language or self.language or "pt",
+            mode or self.mode or None,
+        )
 
     def _submit(self, path) -> Job:
-        model, language = self._options()
+        model, language, mode = self._options()
         return self.api.create_job(
             path.read_bytes(),
             filename=path.name,
             content_type="audio/wav",
             model=model,
             language=language,
+            mode=mode,
         )
 
     def _wait_for_terminal(self, job: Job) -> Job | None:

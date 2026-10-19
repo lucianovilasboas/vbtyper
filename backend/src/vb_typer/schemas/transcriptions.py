@@ -17,6 +17,8 @@ class TranscriptionRead(ORMModel):
     words: int
     model: str
     language: str
+    mode: str = "literal"
+    raw_text: str | None = None
     transcribe_ms: int
     insert_ms: int
     inserted: bool

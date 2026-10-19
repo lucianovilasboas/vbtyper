@@ -19,6 +19,7 @@ class JobRead(ORMModel):
     finished_at: IsoStamp | None = None
     model: str
     language: str
+    mode: str
     filename: str
     content_type: str
     size_bytes: int

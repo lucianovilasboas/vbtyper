@@ -73,6 +73,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await manager.stop()
+        await container.openai.aclose()
         container.engine.dispose()
 
 

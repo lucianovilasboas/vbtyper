@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from vb_typer.adapters.audio_store import AudioStore
 from vb_typer.adapters.secrets import SecretsAdapter
-from vb_typer.core.config import AppSettings
+from vb_typer.core.config import TRANSCRIPTION_MODES, AppSettings
 from vb_typer.core.timeutil import local_stamp
-from vb_typer.db.models import Job
+from vb_typer.db.models import AppSetting, Job
 from vb_typer.domain.enums import TERMINAL_STATUSES, JobStatus
 from vb_typer.domain.errors import DomainError, InvalidModelError, NotFoundError
 from vb_typer.repositories.jobs import JobRepository
@@ -33,6 +33,7 @@ class JobContext:
     content_type: str
     model: str
     language: str
+    mode: str
     duration_s: float
     audio_path: Path | None
 
@@ -61,6 +62,7 @@ class TranscriptionService:
         content_type: str,
         model: str | None,
         language: str | None,
+        mode: str | None = None,
     ) -> Job:
         if model and model not in self.settings.allowed_models:
             raise InvalidModelError(
@@ -72,24 +74,37 @@ class TranscriptionService:
 
         stored = self.audio_store.save(data, content_type, filename)
         now = local_stamp()
-        job = Job(
-            id=uuid.uuid4().hex,
-            status=JobStatus.QUEUED,
-            created_at=now,
-            updated_at=now,
-            model=model or self.settings.default_model,
-            language=language,
-            filename=stored.filename,
-            content_type=stored.content_type,
-            size_bytes=stored.size,
-            duration_s=stored.duration_s,
-            audio_path=str(stored.path),
-        )
         with self.session_factory() as session:
+            # O modo padrão é a escolha do usuário na interface, não a do ambiente:
+            # é ele que decide se o ditado sai literal ou ajustado.
+            chosen = (mode or self._default_mode(session)).strip().lower()
+            if chosen not in TRANSCRIPTION_MODES:
+                raise DomainError(
+                    f"Modo inválido. Use um de: {', '.join(TRANSCRIPTION_MODES)}.",
+                    code="invalid_mode",
+                )
+            job = Job(
+                id=uuid.uuid4().hex,
+                status=JobStatus.QUEUED,
+                created_at=now,
+                updated_at=now,
+                model=model or self.settings.default_model,
+                language=language,
+                mode=chosen,
+                filename=stored.filename,
+                content_type=stored.content_type,
+                size_bytes=stored.size,
+                duration_s=stored.duration_s,
+                audio_path=str(stored.path),
+            )
             self.jobs.add(session, job)
             session.commit()
             session.refresh(job)
             return job
+
+    def _default_mode(self, session: Session) -> str:
+        row = session.get(AppSetting, 1)
+        return row.mode if row is not None else self.settings.default_mode
 
     # --- leitura -----------------------------------------------------------
     def get(self, job_id: str) -> Job:
@@ -135,6 +150,7 @@ class TranscriptionService:
                 content_type=job.content_type,
                 model=job.model,
                 language=job.language,
+                mode=job.mode,
                 duration_s=job.duration_s,
                 audio_path=Path(job.audio_path) if job.audio_path else None,
             )
@@ -147,7 +163,14 @@ class TranscriptionService:
         return context.audio_path.read_bytes()
 
     def finish_success(
-        self, job_id: str, *, text: str, duration_s: float, transcribe_ms: int
+        self,
+        job_id: str,
+        *,
+        text: str,
+        duration_s: float,
+        transcribe_ms: int,
+        raw_text: str | None = None,
+        mode: str | None = None,
     ) -> Job:
         with self.session_factory() as session:
             job = self.jobs.get(session, job_id)
@@ -156,6 +179,8 @@ class TranscriptionService:
             keep = self.settings.keep_audio
             row = new_transcription(
                 text=text,
+                raw_text=raw_text if raw_text is not None else text,
+                mode=mode or job.mode,
                 duration_s=duration_s,
                 model=job.model,
                 language=job.language,

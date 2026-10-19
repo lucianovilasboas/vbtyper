@@ -10,6 +10,7 @@ from vb_typer.schemas.common import ORMModel
 class SettingsRead(ORMModel):
     model: str
     language: str
+    mode: str
     week_start: str
     api_key_configured: bool
     allowed_models: list[str]
@@ -18,6 +19,7 @@ class SettingsRead(ORMModel):
 class SettingsUpdate(BaseModel):
     model: str | None = None
     language: str | None = None
+    mode: str | None = None
     week_start: str | None = None
 
 

@@ -126,9 +126,14 @@ class ApiClient:
         content_type: str,
         model: str | None = None,
         language: str | None = None,
+        mode: str | None = None,
     ) -> Job:
         """Envia o áudio e recebe ``202`` com o job aceito."""
-        fields = {key: value for key, value in (("model", model), ("language", language)) if value}
+        fields = {
+            key: value
+            for key, value in (("model", model), ("language", language), ("mode", mode))
+            if value
+        }
         response = self._request(
             "POST",
             "/api/v1/transcription-jobs",
@@ -152,10 +157,18 @@ class ApiClient:
             payload["insert_ms"] = insert_ms
         self._request("PATCH", f"/api/v1/transcriptions/{transcription_id}", json=payload)
 
-    def current_model_language(self) -> tuple[str, str]:
-        """Modelo e idioma escolhidos na interface; a falha nunca impede o ditado."""
+    def current_options(self) -> tuple[str, str, str]:
+        """Modelo, idioma e modo escolhidos na interface.
+
+        A falha nunca impede o ditado: sem resposta, o backend decide pelos
+        padrões dele (literal entre eles).
+        """
         try:
             payload = self.settings()
         except ApiError:
-            return "", ""
-        return str(payload.get("model") or ""), str(payload.get("language") or "")
+            return "", "", ""
+        return (
+            str(payload.get("model") or ""),
+            str(payload.get("language") or ""),
+            str(payload.get("mode") or ""),
+        )

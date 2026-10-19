@@ -110,7 +110,13 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
     Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
     ali. `tray/tray_helper.py` é cópia fiel do 1.x e não é alterado.
-16. Ícones e marca são **gerados** por `scripts/build-icons.py` a partir de
+16. O modo de transcrição é `literal` por **padrão** — o modo `smart` só entra
+    quando o usuário escolhe (em `/api/v1/settings` ou no campo `mode` do job).
+    No modo smart, o texto reconhecido é guardado em `transcriptions.raw_text` e
+    o ajuste **nunca** derruba o ditado: falhou, entrega o literal. Textos sem
+    nada a converter (prosa comum) pulam a segunda chamada — a heurística está em
+    `services/normalize.py` e é conservadora de propósito.
+17. Ícones e marca são **gerados** por `scripts/build-icons.py` a partir de
     `vb-typer.png` (raiz do repositório):
     `desktop/assets/tray_*.png` (bandeja, uma cor por estado) e
     `web/static/logo.png` + `favicon.png` (telas do app). Não edite esses PNG à

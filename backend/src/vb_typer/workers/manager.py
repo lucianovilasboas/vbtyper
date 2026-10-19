@@ -12,8 +12,10 @@ import time
 
 from vb_typer.adapters.openai import OpenAIAdapter
 from vb_typer.core.config import AppSettings
+from vb_typer.domain.enums import TranscriptionMode
 from vb_typer.domain.errors import DomainError, ProviderError
-from vb_typer.services.transcription import TranscriptionService
+from vb_typer.services.normalize import INSTRUCTIONS, needs_normalization, smart_hint
+from vb_typer.services.transcription import JobContext, TranscriptionService
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,29 @@ class JobManager:
 
     async def submit(self, job_id: str) -> None:
         await self.queue.put(job_id)
+
+    async def _maybe_adjust(self, text: str, context: JobContext, api_key: str) -> tuple[str, str]:
+        """Aplica o modo inteligente; devolve ``(texto, modo entregue)``.
+
+        Falha no ajuste **não** perde o ditado: devolve o texto literal e registra
+        o motivo no log. Nesse caso o modo entregue é ``literal`` — é o que o
+        histórico passa a mostrar, para o usuário saber que não foi ajustado.
+        """
+        if context.mode != TranscriptionMode.SMART:
+            return text, TranscriptionMode.LITERAL
+        if not needs_normalization(text):
+            return text, TranscriptionMode.SMART
+        try:
+            adjusted = await self.openai.normalize(
+                text=text,
+                model=self.settings.smart_model,
+                instructions=INSTRUCTIONS,
+                api_key=api_key,
+            )
+        except DomainError as exc:
+            logger.warning("Ajuste do modo inteligente falhou (job %s): %s", context.id, exc)
+            return text, TranscriptionMode.LITERAL
+        return adjusted or text, TranscriptionMode.SMART
 
     async def cancel(self, job_id: str) -> None:
         await asyncio.to_thread(self.service.request_cancel, job_id)
@@ -96,15 +121,19 @@ class JobManager:
                 model=context.model,
                 language=context.language,
                 api_key=api_key,
+                prompt=smart_hint(context.mode),
             )
             transcribe_ms = int((time.monotonic() - started) * 1000)
             text = (result.get("text") or "").strip()
             if not text:
                 raise ProviderError("A API não reconheceu fala nesse áudio.")
+            text, mode = await self._maybe_adjust(text, context, api_key)
             await asyncio.to_thread(
                 self.service.finish_success,
                 job_id,
                 text=text,
+                raw_text=(result.get("text") or "").strip(),
+                mode=mode,
                 duration_s=context.duration_s,
                 transcribe_ms=transcribe_ms,
             )

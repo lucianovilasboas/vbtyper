@@ -12,6 +12,11 @@ const THEME_KEY = "vb-typer-theme";
 const HEATMAP_DAYS = 91;
 const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+const MODE_LABEL = { literal: "Literal", smart: "Inteligente" };
+const MODE_HELP = {
+  literal: "Literal entrega exatamente o que foi reconhecido.",
+  smart: "Inteligente ajusta datas, números, valores e siglas (18/10/2025, R$ 50,20, 30%).",
+};
 
 const number = new Intl.NumberFormat("pt-BR");
 const money = new Intl.NumberFormat("pt-BR", {
@@ -227,6 +232,7 @@ async function submit(blob) {
     const job = await api.createJob(blob, {
       model: state.settings.model,
       language: state.settings.language,
+      mode: state.settings.mode,
     });
     state.jobId = job.id;
     handleJobResult(await pollJob(job.id));
@@ -331,6 +337,7 @@ async function copyTranscript() {
 function renderSettingChips() {
   $("chip-model").textContent = state.settings.model || "—";
   $("chip-language").textContent = state.settings.language || "—";
+  $("chip-mode").textContent = MODE_LABEL[state.settings.mode] || state.settings.mode || "—";
 }
 
 async function loadSettings() {
@@ -346,6 +353,8 @@ async function loadSettings() {
   }
   select.value = settings.model;
   $("language").value = settings.language;
+  $("mode").value = settings.mode;
+  $("mode-help").textContent = MODE_HELP[settings.mode] || MODE_HELP.literal;
   $("week-start").value = settings.week_start;
   renderSettingChips();
   renderKeyBadge(settings.api_key_configured);
@@ -365,6 +374,7 @@ async function saveSetting(changes) {
     const updated = await api.patchSettings(changes);
     state.settings = { ...state.settings, ...updated };
     renderSettingChips();
+    if (updated.mode) $("mode-help").textContent = MODE_HELP[updated.mode] || MODE_HELP.literal;
     state.loaded.delete("activity");
   } catch (error) {
     setStatus(error.message, "error");
@@ -440,11 +450,28 @@ function historyRow(item) {
   text.className = item.error ? "empty-hint" : "text";
   text.textContent = item.error || item.text || "(sem texto)";
   body.append(text);
+  if (item.mode === "smart") {
+    const badge = document.createElement("span");
+    badge.className = "badge smart";
+    badge.textContent = "inteligente";
+    body.append(badge);
+  }
   if (item.inserted) {
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = "inserido";
     body.append(badge);
+  }
+  if (item.raw_text && item.raw_text !== item.text) {
+    const original = document.createElement("details");
+    original.className = "raw";
+    const summary = document.createElement("summary");
+    summary.textContent = "ver o texto reconhecido";
+    const spoken = document.createElement("p");
+    spoken.className = "muted small";
+    spoken.textContent = item.raw_text;
+    original.append(summary, spoken);
+    body.append(original);
   }
   row.append(body);
 
@@ -779,6 +806,10 @@ function bindEvents() {
   });
 
   $("model").addEventListener("change", () => saveSetting({ model: $("model").value }));
+  $("mode").addEventListener("change", async () => {
+    await saveSetting({ mode: $("mode").value });
+    state.loaded.delete("history");
+  });
   $("language").addEventListener("input", scheduleLanguageSave);
   $("week-start").addEventListener("change", async () => {
     await saveSetting({ week_start: $("week-start").value });

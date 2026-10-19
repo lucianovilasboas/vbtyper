@@ -98,7 +98,9 @@ class FakeApi:
         transcription_id: int | None = 42,
         model: str = "gpt-4o-mini-transcribe",
         language: str = "pt",
+        mode: str = "literal",
     ) -> None:
+        self.mode = mode
         self.text = text
         self.status = status
         self.error = error
@@ -117,10 +119,10 @@ class FakeApi:
     def settings(self) -> dict:
         return {"model": self.model, "language": self.language}
 
-    def current_model_language(self) -> tuple[str, str]:
-        return self.model, self.language
+    def current_options(self) -> tuple[str, str, str]:
+        return self.model, self.language, self.mode
 
-    def create_job(self, data, filename, content_type, model=None, language=None) -> Job:
+    def create_job(self, data, filename, content_type, model=None, language=None, mode=None) -> Job:
         self.uploads.append(
             {
                 "bytes": len(data),
@@ -128,6 +130,7 @@ class FakeApi:
                 "content_type": content_type,
                 "model": model,
                 "language": language,
+                "mode": mode,
             }
         )
         return Job(id="job-1", status="queued")
