@@ -174,7 +174,8 @@ Avisos: no Windows a tecla "Super" é a tecla Windows (risco de menu Iniciar /
   navegador **sabe** a duração (tem o cronômetro) — mandar como campo do
   formulário no `POST` e o backend usar esse valor. São ~10 linhas.
 - **3 linhas de teste no histórico** (ids 98, 99 e 100 — das minhas verificações
-  do indicador, incluindo uma chamada real à OpenAI). O Luciano ainda não disse
-  se quer que eu apague.
-- Confirmar visualmente, num ditado real e mais longo, se a calibração do
-  indicador (`speed`/`sensitivity` = 1.0) é o ponto de equilíbrio.
+  do indicador, incluindo uma chamada real à OpenAI): **ficam**, por decisão do
+  Luciano. Não apagar.
+- Retorno do indicador recalibrado em `v0.4.1` (passou de exponencial para
+  linear). Se ainda parecer lento no uso, `speed` no `desktop.json` — nada de
+  código.
