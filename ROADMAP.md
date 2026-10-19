@@ -167,8 +167,14 @@ Avisos: no Windows a tecla "Super" é a tecla Windows (risco de menu Iniciar /
 
 ## 5. Pendências pequenas
 
+- **Ditados gravados pelo navegador ficam com `duration_s = 0`**, e isso agora
+  aparece na contabilidade: no histórico essas linhas mostram **custo US$ 0,0000**
+  porque o custo é calculado pela duração. O 2.x não extrai duração de WebM/OGG
+  (só de WAV, que é o que o cliente desktop manda). Caminho mais curto: o próprio
+  navegador **sabe** a duração (tem o cronômetro) — mandar como campo do
+  formulário no `POST` e o backend usar esse valor. São ~10 linhas.
 - **3 linhas de teste no histórico** (ids 98, 99 e 100 — das minhas verificações
   do indicador, incluindo uma chamada real à OpenAI). O Luciano ainda não disse
   se quer que eu apague.
-- Confirmar visualmente, num ditado real e mais longo, se a calibração nova do
+- Confirmar visualmente, num ditado real e mais longo, se a calibração do
   indicador (`speed`/`sensitivity` = 1.0) é o ponto de equilíbrio.
