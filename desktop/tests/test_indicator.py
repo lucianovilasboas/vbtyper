@@ -26,15 +26,55 @@ def test_levels_keep_the_window_size(indicator):
     assert len(levels.values) == 4
 
 
-def test_attack_is_faster_than_release(indicator):
-    """Subir reage mais rápido que descer — mas os dois lados são rápidos."""
+def test_attack_is_faster_than_the_fall(indicator):
+    """Subir responde de imediato; descer é firme, mas em linha reta."""
     levels = indicator.Levels(bars=2)
     levels.push(100, elapsed=0.04)
-    rise = levels.shown / 100
+    rise = levels.shown
     levels.push(0, elapsed=0.04)
-    fall = 1 - levels.shown / 100
-    assert rise > fall
-    assert rise > 0.5 and fall > 0.3
+    fall = rise - levels.shown
+    assert rise > 60  # quase instantâneo
+    assert fall > 10  # e já desce no primeiro quadro
+    assert fall < rise  # mas sem pular de uma vez para o fundo
+
+
+def test_fall_is_linear(indicator):
+    """O ponto do ajuste: cada quadro cai o mesmo tanto, sem cauda exponencial."""
+    levels = indicator.Levels(bars=2)
+    levels.push(80, elapsed=0.5)
+    steps = []
+    for _ in range(4):
+        levels.push(0, elapsed=0.04)
+        steps.append(levels.shown)
+    deltas = [80 - steps[0]] + [steps[i] - steps[i + 1] for i in range(len(steps) - 1)]
+    assert max(deltas) - min(deltas) < 1.0  # todos os degraus iguais
+
+
+def test_fall_reaches_the_bottom_quickly(indicator):
+    """De 60% ao fundo em menos de ~0,25 s (antes ficava rastejando até 0,4 s)."""
+    levels = indicator.Levels(bars=2)
+    levels.push(60, elapsed=0.5)
+    elapsed = 0.0
+    while levels.shown > 0 and elapsed < 1.0:
+        levels.push(0, elapsed=0.04)
+        elapsed += 0.04
+    assert elapsed <= 0.24
+
+
+def test_fall_snaps_below_the_floor(indicator):
+    """Com a voz parada, o resto não fica rastejando: zera de vez."""
+    levels = indicator.Levels(bars=2)
+    levels.push(2.0, elapsed=0.5)
+    levels.push(0, elapsed=0.04)
+    assert levels.shown == 0.0
+
+
+def test_fall_does_not_snap_when_there_is_voice(indicator):
+    """O piso vale só para o silêncio; com fala, a barra para no alvo."""
+    levels = indicator.Levels(bars=2)
+    levels.push(30, elapsed=0.5)
+    levels.push(20, elapsed=0.04)
+    assert 19.9 <= levels.shown <= 20.1
 
 
 def test_attack_reaches_the_target_almost_immediately(indicator):
@@ -54,6 +94,18 @@ def test_release_falls_quickly_after_the_voice_stops(indicator):
     assert levels.shown < 15
 
 
+def test_higher_speed_falls_faster(indicator):
+    slow = indicator.Levels(attack_s=indicator.ATTACK_S, fall_rate=indicator.FALL_PER_SECOND)
+    fast = indicator.Levels(
+        attack_s=indicator.ATTACK_S / 2, fall_rate=indicator.FALL_PER_SECOND * 2
+    )
+    slow.push(70, elapsed=0.5)
+    fast.push(70, elapsed=0.5)
+    slow.push(0, elapsed=0.04)
+    fast.push(0, elapsed=0.04)
+    assert fast.shown < slow.shown
+
+
 def test_timing_is_independent_of_the_frame_rate(indicator):
     """Meia dúzia de quadros curtos vale o mesmo que um quadro longo."""
     short, long = indicator.Levels(bars=2), indicator.Levels(bars=2)
@@ -61,14 +113,6 @@ def test_timing_is_independent_of_the_frame_rate(indicator):
         short.push(80, elapsed=0.01)
     long.push(80, elapsed=0.10)
     assert abs(short.shown - long.shown) < 4
-
-
-def test_higher_speed_reacts_faster(indicator):
-    slow = indicator.Levels(attack_s=indicator.ATTACK_S, release_s=indicator.RELEASE_S)
-    fast = indicator.Levels(attack_s=indicator.ATTACK_S / 2, release_s=indicator.RELEASE_S / 2)
-    slow.push(70, elapsed=0.04)
-    fast.push(70, elapsed=0.04)
-    assert fast.shown > slow.shown
 
 
 def test_levels_clamp_out_of_range_values(indicator):

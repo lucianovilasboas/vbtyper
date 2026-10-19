@@ -190,5 +190,7 @@ de propor trabalho novo.
   é o que distingue as duas.
 - A onda do indicador usa o nível real do `arecord`, que sai a cada período de
   captura: por isso a captura usa `--period-size=256` (~17 ms por nível, contra
-  ~140 ms do padrão). `speed` e `sensitivity` no `desktop.json` ajustam a reação
-  sem tocar em código.
+  ~140 ms do padrão). O ataque é por constante de tempo (~35 ms) e o **retorno é
+  linear** (350%/s, zerando abaixo de 4%) — exponencial no retorno deixa uma
+  cauda que se percebe como lentidão. `speed` e `sensitivity` no `desktop.json`
+  ajustam a reação sem tocar em código.

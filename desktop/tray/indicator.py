@@ -22,10 +22,14 @@ BARS = 14
 POLL_VISIBLE_MS = 45
 POLL_IDLE_MS = 60
 FRAME_MS = 40
-# Constantes de tempo do indicador, em segundos: sobe quase junto com a voz e
-# volta rápido ao silêncio (antes era ~25 ms para subir e ~330 ms para cair).
+# Constante de tempo do ataque, em segundos: sobe quase junto com a voz.
 ATTACK_S = 0.035
-RELEASE_S = 0.100
+# O retorno é **linear**, em pontos de nível por segundo. Uma exponencial deixa
+# uma cauda longa nos últimos por centos — o trecho que se percebe como lentidão
+# ("escorrendo"), por mais rápida que seja a constante.
+FALL_PER_SECOND = 350.0
+# Abaixo disto, com a voz parada, a barra zera de vez em vez de rastejar.
+FLOOR = 4.0
 FADE_STEP = 0.30
 HIDE_POLLS = 3
 FAILS_TO_QUIT = 12
@@ -79,26 +83,36 @@ def fill_width(ratio: float, width: float, minimum: float) -> float:
 
 
 class Levels:
-    """Histórico de níveis suavizados, para a onda acompanhar a fala sem tremer."""
+    """Histórico de níveis suavizados, para a onda acompanhar a fala sem tremer.
+
+    Sobe com constante de tempo curta (responde junto com a voz) e **desce em
+    linha reta**: cada quadro cai a mesma quantidade, então a barra chega ao
+    fundo sem o rastejo final de uma exponencial.
+    """
 
     def __init__(
         self,
         bars: int = BARS,
         attack_s: float = ATTACK_S,
-        release_s: float = RELEASE_S,
+        fall_rate: float = FALL_PER_SECOND,
     ) -> None:
         self.bars = bars
         self.attack_s = attack_s
-        self.release_s = release_s
+        self.fall_rate = fall_rate
         self.shown = 0.0
         self.values = [0.0] * bars
 
     def push(self, target, elapsed: float = FRAME_MS / 1000) -> None:
-        """Aproxima do alvo em ``elapsed`` segundos (constante de tempo, não por quadro)."""
+        """Aproxima do alvo num intervalo de ``elapsed`` segundos."""
         goal = max(0.0, min(100.0, float(target)))
-        tau = self.attack_s if goal > self.shown else self.release_s
-        factor = 1.0 if tau <= 0 else 1.0 - math.exp(-max(0.0, elapsed) / tau)
-        self.shown += (goal - self.shown) * factor
+        elapsed = max(0.0, float(elapsed))
+        if goal >= self.shown:
+            factor = 1.0 if self.attack_s <= 0 else 1.0 - math.exp(-elapsed / self.attack_s)
+            self.shown += (goal - self.shown) * factor
+        else:
+            self.shown = max(goal, self.shown - self.fall_rate * elapsed)
+            if goal < FLOOR and self.shown < FLOOR:
+                self.shown = 0.0
         self.values.append(self.shown)
         del self.values[: -self.bars]
 
@@ -155,7 +169,7 @@ class Indicator:
         self.speed = max(0.2, speed)
         self.sensitivity = max(0.2, sensitivity)
         self.shape = shape if shape in SHAPES else "bar"
-        self.levels = Levels(attack_s=ATTACK_S / self.speed, release_s=RELEASE_S / self.speed)
+        self.levels = Levels(attack_s=ATTACK_S / self.speed, fall_rate=FALL_PER_SECOND * self.speed)
         self.phase = "idle"
         self.level = 0
         self._alpha = 1.0

@@ -123,9 +123,10 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
   deixava a onda lenta, por melhor que fosse a animação. Com
   `--period-size=256` são ~58 por segundo (17 ms). Se algum dispositivo reclamar
   de *xrun*, 512 (32 ms) é o meio-termo.
-- **Suavização em constante de tempo, não por quadro.** A onda sobe em ~35 ms e
-  volta em ~100 ms, independente da taxa de quadros — antes eram frações fixas
-  por quadro, o que amarravam o comportamento à taxa de desenho.
+- **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
+  ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
+  linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,
+  e é essa cauda que se percebe como lentidão. `speed` multiplica as duas coisas.
 - **Posição vem do cliente, não do helper.** A escolha de âncora e o recorte na
   tela são cálculo puro (`geometry.py`, testado); o desenho de fato só se
   verifica no olho, numa sessão X11.
