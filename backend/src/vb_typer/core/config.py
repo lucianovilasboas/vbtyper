@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Modelos aceitos pelo domínio. A lista de preços fica em `vb_typer.services.stats`.
 DEFAULT_ALLOWED_MODELS = ("gpt-4o-mini-transcribe", "gpt-transcribe")
@@ -26,6 +27,12 @@ DEFAULT_ALLOWED_CONTENT_TYPES = (
 WEEK_STARTS = ("monday", "sunday")
 TRANSCRIPTION_MODES = ("literal", "smart")
 
+# Lista de textos vinda de variável de ambiente. `NoDecode` desliga o JSON
+# automático do pydantic-settings: sem ele, `VB_TYPER_ALLOWED_HOSTS=a,b` falha no
+# start antes de `_split_csv` rodar (o pydantic-settings tentaria decodificar o
+# valor como JSON).
+CsvTuple = Annotated[tuple[str, ...], NoDecode]
+
 
 def _split_csv(value: Any) -> Any:
     if isinstance(value, str):
@@ -33,7 +40,7 @@ def _split_csv(value: Any) -> Any:
         if not stripped:
             return ()
         if stripped.startswith("["):
-            return value
+            return json.loads(stripped)
         return tuple(part.strip() for part in stripped.split(",") if part.strip())
     return value
 
@@ -65,8 +72,8 @@ class AppSettings(BaseSettings):
 
     # Segurança local.
     api_token: str | None = None
-    allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
-    cors_origins: tuple[str, ...] = ()
+    allowed_hosts: CsvTuple = ("127.0.0.1", "localhost")
+    cors_origins: CsvTuple = ()
     trust_origin_header: bool = True
 
     # Interface web (servida pelo próprio backend, na mesma origem).
@@ -82,8 +89,8 @@ class AppSettings(BaseSettings):
     # Áudio e transcrição.
     max_upload_bytes: int = 25 * 1024 * 1024
     max_audio_seconds: float = 120.0
-    allowed_models: tuple[str, ...] = DEFAULT_ALLOWED_MODELS
-    allowed_content_types: tuple[str, ...] = DEFAULT_ALLOWED_CONTENT_TYPES
+    allowed_models: CsvTuple = DEFAULT_ALLOWED_MODELS
+    allowed_content_types: CsvTuple = DEFAULT_ALLOWED_CONTENT_TYPES
     default_model: str = "gpt-4o-mini-transcribe"
     default_language: str = "pt"
     # Modo de transcrição padrão: literal (as palavras reconhecidas como vieram).
