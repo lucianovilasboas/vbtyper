@@ -108,25 +108,28 @@ desfazer: se o modo inteligente errar um valor, o original continua no históric
 
 ## 2. Interface web com a cara do 1.x
 
-**Pedido (Luciano, 18/10):** o histórico e a tela de atividades devem ficar mais
-parecidos com a versão 1. Não é urgente.
+**Feito em `v0.4.0`** (commit `a9e6013`). As quatro telas seguem o protótipo do
+1.x (`hermes-workspace/vibe-typer/prototype-estatisticas.html`): paleta com o
+roxo `#7839e8`, cartões, gráficos em SVG, mapa de consistência das últimas 13
+semanas, uso por dia da semana, tabela de histórico com **custo por ditado** e
+tela de configurações com miniatura de cada tema (claro/escuro/automático).
 
-O que já existe para reaproveitar:
+O custo por ditado vem da API (`cost_usd` em cada transcrição), calculado pela
+tarifa do modelo em `domain/pricing.py` — uma fonte só, sem tabela duplicada no
+JavaScript.
 
-- `hermes-workspace/vibe-typer/prototype-estatisticas.html` — protótipo web da
-  tela de estatísticas (24 KB);
-- a paleta do Tk no 1.x (`LIGHT_COLORS`/`DARK_COLORS`), com tema
-  auto/claro/escuro persistido e o roxo `#7839e8` como cor de destaque.
+### O que falta desta seção
 
-Diagnóstico: a SPA do 2.x **já tem** as métricas (7/30/90 dias, 6 meses, 1 ano,
-ritmo, pico, p95, falhas). O que falta é **pele**: tema claro/escuro persistido,
-paleta, tipografia, formato da tabela do histórico e visual do gráfico.
+Duas análises que estavam no ROADMAP do 1.x e ainda não existem:
 
-Observação: a cor de destaque da SPA é **indigo** (`--brand: #4f46e5`) enquanto a
-marca é **violeta**. Alinhar o `--brand` ao violeta da marca é uma linha e faz
-parte deste item.
+1. **Comparar a semana atual com a anterior**, com variação percentual de
+   ditados, palavras e tempo de áudio. Sai quase de graça: são duas chamadas a
+   `/stats` com intervalos diferentes (ou um parâmetro novo na API).
+2. **Períodos de baixa atividade/pausas**, para acompanhar o padrão de uso — sem
+   presumir que o app ativo significa que o usuário está disponível para ditar.
 
-Restrição que vale: **sem build/Node** — ES modules e CSS puro, como hoje.
+Ideias menores, se valerem: exportar também as estatísticas (hoje só o histórico
+tem CSV) e um filtro de modelo na tela de atividade.
 
 ---
 
