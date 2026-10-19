@@ -3,8 +3,8 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 18/10/2026 — backend e cliente desktop em `v0.3.2`
-(backend: 61 testes; desktop: 155 testes).
+Última atualização: 18/10/2026 — tudo em `v0.4.1` (backend: 63 testes; desktop:
+163 testes).
 
 ---
 
