@@ -38,8 +38,9 @@ line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
 # `tray/tray_helper.py` é cópia fiel do app 1.x (processo GTK3 separado); não é
-# formatado aqui para o arquivo seguir idêntico ao original.
-extend-exclude = ["tray"]
+# formatado aqui para o arquivo seguir idêntico ao original. O `tray/indicator.py`
+# é nosso e é verificado normalmente.
+extend-exclude = ["tray/tray_helper.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

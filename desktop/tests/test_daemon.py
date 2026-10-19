@@ -9,6 +9,7 @@ import pytest
 from fakes import FakeApi, FakePlatform, FakeRecorder
 from vb_typer_desktop import daemon as daemon_module
 from vb_typer_desktop.daemon import Daemon
+from vb_typer_desktop.preferences import Preferences
 
 
 def build(api=None, platform=None, **kwargs):
@@ -105,7 +106,7 @@ def test_cancel_during_transcription_blocks_late_insertion(make_wav, tmp_path):
 
 
 def test_pause_cancels_and_discards_the_capture(tmp_path):
-    agent, notifications = build()
+    agent, notifications = build(preferences=Preferences(notices="balloons"))
     recorder = FakeRecorder(tmp_path / "a.wav")
     agent.recorder = recorder
 
@@ -181,6 +182,9 @@ def test_recording_starts_once_and_reports_the_state(monkeypatch, tmp_path):
     class StubRecorder:
         def __init__(self) -> None:
             self.path = tmp_path / "stub.wav"
+            self.elapsed = 0.5
+            self.returncode = 0
+            self.level = 0
 
         def start(self) -> None:
             calls.append("start")
@@ -219,6 +223,7 @@ def test_hotkey_drives_the_whole_dictation(monkeypatch, tmp_path, make_wav):
             self.path = make_wav(tmp_path / "captura.wav")
             self.elapsed = 1.0
             self.returncode = 0
+            self.level = 0
 
         def start(self) -> None:
             return None
@@ -333,3 +338,103 @@ def test_shutdown_releases_the_waiting_caller():
     agent.shutdown()
     assert agent.done.is_set()
     assert agent.paused is True
+
+
+# --------------------------------------------------------- indicador e avisos
+
+
+def test_snapshot_offers_the_indicator_box_while_recording(tmp_path):
+    agent, _ = build()
+    agent.recorder = FakeRecorder(tmp_path / "a.wav")
+    agent.target_window = 7
+    snapshot = agent.state_snapshot()
+
+    assert snapshot["phase"] == "recording"
+    box = snapshot["indicator"]
+    assert box["w"] > box["h"]
+    # A caixa fica dentro da janela em foco (100,200,900,600).
+    assert 100 <= box["x"] <= 900
+    assert box["y"] + box["h"] <= 800
+
+
+def test_snapshot_hides_the_indicator_when_idle():
+    agent, _ = build()
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "idle"
+    assert "indicator" not in snapshot
+    assert snapshot["level"] == 0
+
+
+def test_snapshot_reports_the_microphone_level(tmp_path):
+    agent, _ = build()
+    recorder = FakeRecorder(tmp_path / "a.wav")
+    recorder.level = 42
+    agent.recorder = recorder
+    assert agent.state_snapshot()["level"] == 42
+
+
+def test_indicator_is_hidden_without_a_focused_window(tmp_path):
+    platform = FakePlatform(window_area=None)
+    agent, _ = build(platform=platform)
+    agent.recorder = FakeRecorder(tmp_path / "a.wav")
+    assert "indicator" not in agent.state_snapshot()
+
+
+def test_indicator_is_off_in_balloons_mode(tmp_path):
+    agent, _ = build(preferences=Preferences(notices="balloons"))
+    agent.recorder = FakeRecorder(tmp_path / "a.wav")
+    assert "indicator" not in agent.state_snapshot()
+
+
+def test_indicator_follows_the_pointer_when_asked(tmp_path):
+    agent, _ = build(
+        preferences=Preferences(notices="indicator", anchor="pointer", position="bottom-center")
+    )
+    agent.recorder = FakeRecorder(tmp_path / "a.wav")
+    box = agent.state_snapshot()["indicator"]
+    assert box["y"] > 500  # logo abaixo do ponteiro (500, 500)
+
+
+def test_routine_notices_do_not_pop_a_balloon():
+    agent, notifications = build()
+    agent._notify("VB Typer", "Gravando. Solte Ctrl ou Super.", "normal")
+    assert notifications == []
+
+
+def test_errors_reach_the_balloon_and_flash_the_indicator():
+    agent, notifications = build()
+    agent._notify("VB Typer — erro", "falhou", "critical")
+
+    assert [item[2] for item in notifications] == ["critical"]
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "error"
+    assert snapshot["message"] == "falhou"
+
+
+def test_balloons_mode_restores_routine_balloons():
+    agent, notifications = build(preferences=Preferences(notices="balloons"))
+    agent._notify("VB Typer", "Gravando.", "normal")
+    assert notifications
+
+
+def test_none_mode_silences_even_errors():
+    agent, notifications = build(preferences=Preferences(notices="none"))
+    agent._notify("VB Typer — erro", "falhou", "critical")
+    assert notifications == []
+    assert agent.state_snapshot()["phase"] == "error"
+
+
+def test_successful_insertion_flashes_the_check(make_wav, tmp_path):
+    api, platform = FakeApi(), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    assert agent.state_snapshot()["phase"] == "inserted"
+
+
+def test_focus_loss_flashes_the_error(make_wav, tmp_path):
+    platform = FakePlatform(type_failure=RuntimeError("O foco mudou"))
+    agent, _ = build(platform=platform)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "error"
+    assert "foco mudou" in snapshot["message"]

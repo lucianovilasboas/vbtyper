@@ -6,6 +6,8 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
+from vb_typer_desktop.geometry import Rect
+
 
 class HotkeyWatcher(Protocol):
     """Observador do atalho global; precisa parar de forma determinística."""
@@ -39,3 +41,12 @@ class Platform(Protocol):
 
     def hotkey_watcher(self, on_change: Callable[[str, bool], None]) -> HotkeyWatcher:
         """Cria o observador do atalho, avisando ``on_change(grupo, pressionada)``."""
+
+    def window_rect(self, window: int | None) -> Rect | None:
+        """Área da janela de topo; ``None`` quando não há onde ancorar o indicador."""
+
+    def screen_rect(self) -> Rect | None:
+        """Área da tela em coordenadas da raiz."""
+
+    def pointer_position(self) -> tuple[int, int] | None:
+        """Posição do ponteiro em coordenadas da raiz."""

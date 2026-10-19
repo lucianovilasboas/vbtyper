@@ -49,8 +49,9 @@ uv sync --extra dev
 uv run pytest -q
 uv run ruff check . && uv run ruff format --check .
 uv run vb-typer-desktop            # ditado por Ctrl+Super, com bandeja
-uv run vb-typer-desktop --status   # API, token e ambiente
+uv run vb-typer-desktop --status   # API, token e preferências
 uv run vb-typer-desktop --self-test
+uv run vb-typer-desktop --notices balloons   # avisos como antes (balões)
 ```
 
 Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
@@ -100,6 +101,14 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     dois rodam em paralelo e não podem se confundir nem disputar o arquivo.
 13. O cliente desktop não conhece o cofre nem a chave: fala só com a API pelo
     token em `~/.config/vb-typer/api-token`. Nada de SQLite, nada de OpenAI direta.
+14. Os avisos do ditado são do **cliente**, não do backend: preferências em
+    `~/.config/vb-typer/desktop.json`. O padrão é o indicador visual silencioso;
+    balões do sistema só para erro. `--notices balloons` restaura o
+    comportamento antigo, sem mexer em código.
+15. O indicador e a bandeja são helpers GTK3 em **processo separado**, no Python
+    do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
+    Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
+    ali. `tray/tray_helper.py` é cópia fiel do 1.x e não é alterado.
 
 ## Testes
 
@@ -148,8 +157,9 @@ desbloqueado: `systemctl --user restart vb-typer-api` resolve.
   importador do 1.x) — 60 testes.
 - Cliente web (Ditar / Histórico / Atividade) servido na mesma origem.
 - Cliente desktop Linux/X11 completo (atalho, gravação, job, inserção no cursor,
-  bandeja, interface no navegador) — 93 testes. Verificado à mão: XTEST com
-  acentos, ciclo de vida do daemon e ditado ponta a ponta.
+  bandeja, indicador visual, interface no navegador) — 146 testes. Verificado à
+  mão: XTEST com acentos, ciclo de vida do daemon, ditado ponta a ponta e as
+  quatro fases do indicador (foto por fase, com API simulada).
 - Próximo: macOS e Windows pela camada `desktop/src/vb_typer_desktop/platform/`
   (adaptadores de áudio, inserção e bandeja), depois empacotamento one-file.
 
@@ -162,3 +172,6 @@ desbloqueado: `systemctl --user restart vb-typer-api` resolve.
   pendurado). O atalho é observado consultando `XQueryKeymap` a cada 25 ms.
 - `arecord` leva ~300 ms para abrir o dispositivo: os primeiros instantes de uma
   gravação muito curta podem faltar (mesmo comportamento do 1.x).
+- Avisos: indicador visual silencioso por padrão (sem balão, sem som), ancorado
+  na base da janela em foco; balões ficam para erro. A volta é
+  `--notices balloons`.

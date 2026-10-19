@@ -8,14 +8,15 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import replace
 
-from vb_typer_desktop import __version__
+from vb_typer_desktop import __version__, preferences
 from vb_typer_desktop.api import DEFAULT_BASE_URL, ApiClient, ApiError, load_token
 from vb_typer_desktop.control import ControlServer, control_socket_path, talk_to_running_instance
 from vb_typer_desktop.daemon import Daemon
 from vb_typer_desktop.notify import notify
 from vb_typer_desktop.platform import get_platform
-from vb_typer_desktop.tray import start_tray
+from vb_typer_desktop.tray import start_indicator, start_tray
 from vb_typer_desktop.ui import ui_url
 
 BACKEND_HINT = "Inicie o serviço com: systemctl --user start vb-typer-api"
@@ -34,15 +35,21 @@ def _warn_if_backend_down(api: ApiClient, attempts: int = 10, delay: float = 0.5
                 "VB Typer — erro",
                 "Chave OpenAI ausente. Salve na interface ou rode: vb-typer-api --setup",
                 "critical",
+                sound=False,
             )
         return
     notify("VB Typer — erro", f"A API do VB Typer não respondeu. {BACKEND_HINT}", "critical")
 
 
-def _status(api: ApiClient) -> int:
+def _status(api: ApiClient, current: preferences.Preferences) -> int:
     print(f"VB Typer Desktop {__version__}")
     print(f"API: {api.base_url}")
     print(f"Token encontrado: {'sim' if load_token() else 'não'}")
+    print(f"Preferências: {preferences.preference_file()}")
+    print(
+        f"Avisos: {current.notices} · âncora: {current.anchor}/{current.position} "
+        f"· som: {'sim' if current.sound else 'não'} · tamanho: {current.size}"
+    )
     try:
         ready = api.ready()
     except ApiError as exc:
@@ -84,33 +91,52 @@ def _self_test(api: ApiClient) -> int:
     return 1 if failed else 0
 
 
-def _teardown(daemon: Daemon, server: ControlServer, tray_process, api: ApiClient) -> None:
+def _teardown(daemon: Daemon, server: ControlServer, helpers: list, api: ApiClient) -> None:
     daemon.shutdown()
     server.stop()
-    if tray_process is not None and tray_process.poll() is None:
-        tray_process.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            tray_process.wait(timeout=3)
+    for process in helpers:
+        if process.poll() is None:
+            process.terminate()
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=3)
     api.close()
 
 
-def run_daemon(api: ApiClient, with_tray: bool, open_browser: bool) -> int:
+def run_daemon(
+    api: ApiClient, with_tray: bool, open_browser: bool, prefs: preferences.Preferences
+) -> int:
     _warn_if_backend_down(api)
-    daemon = Daemon(api)
-    server = ControlServer(control_socket_path(), daemon.control_command)
+    daemon = Daemon(
+        api,
+        notify_fn=lambda title, message, urgency="normal": notify(
+            title, message, urgency, sound=prefs.sound
+        ),
+        preferences=prefs,
+    )
+    socket_path = control_socket_path()
+    server = ControlServer(socket_path, daemon.control_command)
     server.start()
-    tray_process = start_tray(control_socket_path()) if with_tray else None
+    helpers = []
+    if with_tray:
+        tray_process = start_tray(socket_path)
+        if tray_process is not None:
+            helpers.append(tray_process)
+    if prefs.shows_indicator:
+        indicator_process = start_indicator(socket_path)
+        if indicator_process is not None:
+            helpers.append(indicator_process)
     try:
         daemon.start_listener()
     except RuntimeError as exc:
         notify("VB Typer — erro", str(exc), "critical")
         print(f"Falha ao iniciar o ditado: {exc}", file=sys.stderr)
-        _teardown(daemon, server, tray_process, api)
+        _teardown(daemon, server, helpers, api)
         return 1
     if open_browser:
         daemon.show_ui()
     print(
-        f"VB Typer ativo (Ctrl+Super para falar). Interface em {ui_url(api.base_url)}",
+        f"VB Typer ativo (Ctrl+Super para falar). Avisos: {prefs.notices}. "
+        f"Interface em {ui_url(api.base_url)}",
         flush=True,
     )
     try:
@@ -118,7 +144,7 @@ def run_daemon(api: ApiClient, with_tray: bool, open_browser: bool) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        _teardown(daemon, server, tray_process, api)
+        _teardown(daemon, server, helpers, api)
     return 0
 
 
@@ -133,15 +159,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-tray", action="store_true", help="não usar a bandeja do sistema")
     parser.add_argument("--force", action="store_true", help="ignorar instância já em execução")
     parser.add_argument("--version", action="store_true", help="mostrar a versão e sair")
+    parser.add_argument(
+        "--notices",
+        choices=preferences.NOTICE_MODES,
+        default=None,
+        help="como avisar: indicator (padrão), balloons (comportamento antigo), both, none",
+    )
+    parser.add_argument(
+        "--write-preferences",
+        action="store_true",
+        help="gravar o arquivo de preferências com os valores atuais e sair",
+    )
     args = parser.parse_args(argv)
 
     if args.version:
         print(f"VB Typer Desktop {__version__}")
         return 0
 
+    prefs = preferences.load()
+    if args.notices:
+        prefs = replace(prefs, notices=args.notices)
+    if args.write_preferences:
+        print(f"Preferências gravadas em {preferences.save(prefs)}")
+        return 0
+
     api = ApiClient(base_url=args.base_url)
     if args.status:
-        code = _status(api)
+        code = _status(api, prefs)
         api.close()
         return code
     if args.self_test:
@@ -157,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         api.close()
         return 0
 
-    return run_daemon(api, with_tray=not args.no_tray, open_browser=args.ui)
+    return run_daemon(api, with_tray=not args.no_tray, open_browser=args.ui, prefs=prefs)
 
 
 if __name__ == "__main__":

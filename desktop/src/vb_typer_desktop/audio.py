@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import struct
@@ -16,6 +17,9 @@ MAX_AUDIO_SECONDS = 120
 MAX_AUDIO_BYTES = MAX_AUDIO_SECONDS * 32000 + 4096
 MAX_STDERR_BYTES = 4096
 PCM_FORMAT = (1, 1, 16000, 32000, 2, 16)
+METER_PATTERN = re.compile(rb"([0-9]{1,3})%")
+# Cabeçalho que o arecord imprime ao começar bem; não é mensagem de erro.
+BANNER_MARKERS = ("Gravando WAVE", "Recording WAVE")
 
 
 class AudioError(RuntimeError):
@@ -29,7 +33,11 @@ def temp_wav_path() -> Path:
 
 
 def capture_command(path: Path) -> list[str]:
-    """Comando do ``arecord``: mono, 16 kHz, 16 bits, WAV, até 120 s."""
+    """Comando do ``arecord``: mono, 16 kHz, 16 bits, WAV, até 120 s.
+
+    ``-V mono`` faz o ``arecord`` reportar o nível do microfone no stderr; é o
+    que alimenta as barras de onda do indicador visual.
+    """
     return [
         "arecord",
         "-D",
@@ -44,6 +52,8 @@ def capture_command(path: Path) -> list[str]:
         "wav",
         "-d",
         str(MAX_AUDIO_SECONDS),
+        "-V",
+        "mono",
         str(path),
     ]
 
@@ -165,6 +175,7 @@ class Recorder:
         self.started_at = time.monotonic()
         self.returncode: int | None = None
         self.interrupted = False
+        self.level = 0
         self._stderr = bytearray()
         self._reader: threading.Thread | None = None
 
@@ -204,13 +215,26 @@ class Recorder:
                     break
                 self._stderr.extend(chunk)
                 del self._stderr[:-MAX_STDERR_BYTES]
+                self._update_level(chunk)
         except (OSError, ValueError):
             pass
 
+    def _update_level(self, chunk: bytes) -> None:
+        """Nível mais recente do medidor do ``arecord``, de 0 a 100."""
+        matches = METER_PATTERN.findall(chunk)
+        if matches:
+            self.level = min(100, int(matches[-1]))
+
     def last_stderr(self) -> str:
+        """Última mensagem útil do ``arecord`` — medidor e cabeçalho são ignorados."""
         text = self._stderr.decode("utf-8", "replace")
         lines = [line.strip() for line in text.replace("\r", "\n").split("\n") if line.strip()]
-        return lines[-1] if lines else ""
+        for line in reversed(lines):
+            if any(marker in line for marker in BANNER_MARKERS):
+                continue
+            if any(char.isalpha() for char in line):
+                return line
+        return ""
 
     def stop(self) -> bool:
         """Encerra a captura; devolve ``True`` quando o SIGINT foi enviado."""

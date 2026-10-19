@@ -16,13 +16,18 @@ from vb_typer_desktop.audio import (
     repair_interrupted_wav_header,
     validate_wav,
 )
+from vb_typer_desktop.geometry import Rect, indicator_rect
 from vb_typer_desktop.hotkey import HotkeyState
 from vb_typer_desktop.notify import notify as default_notify
 from vb_typer_desktop.platform import Platform, get_platform
+from vb_typer_desktop.preferences import Preferences
 from vb_typer_desktop.ui import open_ui
 
 POLL_INTERVAL_S = 0.3
 JOB_TIMEOUT_S = 180.0
+INSERTED_FLASH_S = 1.2
+ERROR_FLASH_S = 3.0
+INDICATOR_REFRESH_S = 0.25
 
 
 class Cancelled(RuntimeError):
@@ -40,6 +45,7 @@ class Daemon:
         language: str = "",
         notify_fn=None,
         open_ui_fn=None,
+        preferences: Preferences | None = None,
         poll_interval: float = POLL_INTERVAL_S,
         job_timeout: float = JOB_TIMEOUT_S,
     ) -> None:
@@ -47,6 +53,7 @@ class Daemon:
         self.platform = platform or get_platform()
         self.model = model
         self.language = language
+        self.preferences = preferences or Preferences()
         self._notify_fn = notify_fn or default_notify
         self._open_ui_fn = open_ui_fn or self._default_open_ui
         self.poll_interval = poll_interval
@@ -64,6 +71,10 @@ class Daemon:
         self.capture_timer: threading.Timer | None = None
         self.last_transcript = ""
         self.quitting = False
+        self._flash_until = 0.0
+        self._flash_phase = "idle"
+        self._flash_message = ""
+        self._indicator_cache: tuple[float, str, Rect | None] = (0.0, "idle", None)
 
     # ------------------------------------------------------------------ estado
 
@@ -75,24 +86,80 @@ class Daemon:
     def _default_open_ui(self) -> bool:
         return open_ui(self.api.base_url)
 
+    def _flash(self, phase: str, message: str, seconds: float) -> None:
+        """Marca um estado passageiro (inserido/erro) para o indicador mostrar."""
+        self._flash_phase = phase
+        self._flash_message = message
+        self._flash_until = time.monotonic() + seconds
+
+    def _phase(self) -> str:
+        if self.recorder is not None:
+            return "recording"
+        if self.busy:
+            return "processing"
+        if time.monotonic() < self._flash_until:
+            return self._flash_phase
+        return "idle"
+
     def _notify(self, title: str, message: str, urgency: str = "normal") -> None:
-        self._notify_fn(title, message, urgency)
+        """Rotina vai para o indicador visual; o balão do sistema fica para o resto."""
+        if urgency == "critical":
+            self._flash("error", message, ERROR_FLASH_S)
+            if self.preferences.shows_error_balloons:
+                self._notify_fn(title, message, urgency)
+        elif self.preferences.shows_routine_balloons:
+            self._notify_fn(title, message, urgency)
 
     def _cancel_timer(self) -> None:
         if self.capture_timer is not None:
             self.capture_timer.cancel()
             self.capture_timer = None
 
+    def _indicator_box(self, phase: str) -> Rect | None:
+        """Onde desenhar o indicador; leva em conta a fase e as preferências."""
+        if phase == "idle" or not self.preferences.shows_indicator:
+            return None
+        now = time.monotonic()
+        cached_at, cached_phase, cached_box = self._indicator_cache
+        if cached_phase == phase and now - cached_at < INDICATOR_REFRESH_S:
+            return cached_box
+        anchor = self.preferences.anchor
+        window = self.platform.window_rect(self.target_window) if anchor == "window" else None
+        pointer = self.platform.pointer_position() if anchor == "pointer" else None
+        box = indicator_rect(
+            anchor,
+            self.preferences.position,
+            self.preferences.size,
+            window=window,
+            screen=self.platform.screen_rect(),
+            pointer=pointer,
+        )
+        self._indicator_cache = (now, phase, box)
+        return box
+
     def state_snapshot(self) -> dict:
         recording = self.recorder is not None
-        state = "recording" if recording else ("processing" if self.busy else "idle")
-        return {
+        phase = self._phase()
+        snapshot = {
             "ok": True,
-            "state": state,
+            "state": "recording" if recording else ("processing" if self.busy else "idle"),
             "dictating": self.listening,
             "recording": recording,
             "hidden": False,
+            "phase": phase,
+            "level": self.recorder.level if self.recorder is not None else 0,
         }
+        if phase in ("inserted", "error") and self._flash_message:
+            snapshot["message"] = self._flash_message
+        box = self._indicator_box(phase)
+        if box is not None:
+            snapshot["indicator"] = {
+                "x": box.x,
+                "y": box.y,
+                "w": box.width,
+                "h": box.height,
+            }
+        return snapshot
 
     # ------------------------------------------------------------------ atalho
 
@@ -282,6 +349,7 @@ class Daemon:
         started = time.monotonic()
         self.platform.type_text(text, target, self.cancel)
         self._mark_inserted(job, int((time.monotonic() - started) * 1000))
+        self._flash("inserted", "inserido", INSERTED_FLASH_S)
         self._notify("VB Typer", "Transcrição inserida no aplicativo que estava em foco.")
 
     def _mark_inserted(self, job: Job, insert_ms: int) -> None:

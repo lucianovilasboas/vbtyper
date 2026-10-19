@@ -33,7 +33,9 @@ def test_force_ignores_the_running_instance(monkeypatch, fake_running):
     monkeypatch.setattr(main_module, "run_daemon", lambda *a, **k: started.append(k) or 0)
 
     assert main_module.main(["--force"]) == 0
-    assert started == [{"with_tray": True, "open_browser": False}]
+    assert started[0]["with_tray"] is True
+    assert started[0]["open_browser"] is False
+    assert started[0]["prefs"].shows_indicator is True
 
 
 def test_starts_when_nothing_is_running(monkeypatch):
@@ -42,7 +44,19 @@ def test_starts_when_nothing_is_running(monkeypatch):
     monkeypatch.setattr(main_module, "run_daemon", lambda *a, **k: started.append(k) or 0)
 
     assert main_module.main(["--no-tray", "--ui"]) == 0
-    assert started == [{"with_tray": False, "open_browser": True}]
+    assert started[0]["with_tray"] is False
+    assert started[0]["open_browser"] is True
+
+
+def test_notices_flag_restores_the_old_behaviour(monkeypatch):
+    monkeypatch.setattr(main_module, "talk_to_running_instance", lambda cmd: None)
+    started: list[dict] = []
+    monkeypatch.setattr(main_module, "run_daemon", lambda *a, **k: started.append(k) or 0)
+
+    assert main_module.main(["--notices", "balloons"]) == 0
+    prefs = started[0]["prefs"]
+    assert prefs.shows_routine_balloons is True
+    assert prefs.shows_indicator is False
 
 
 def test_self_test_reports_a_missing_recorder(monkeypatch, capsys):

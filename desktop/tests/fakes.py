@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from vb_typer_desktop.api import Job
+from vb_typer_desktop.geometry import Rect
+
+# Áreas padrão dos dublês: uma janela qualquer dentro de uma tela 1920x1080.
+DEFAULT_WINDOW_AREA = Rect(100, 200, 900, 600)
+DEFAULT_SCREEN_AREA = Rect(0, 0, 1920, 1080)
 
 
 class FakeWatcher:
@@ -37,10 +42,16 @@ class FakePlatform:
         window: int | None = 7,
         type_failure: Exception | None = None,
         session_failure: Exception | None = None,
+        window_area: Rect | None = DEFAULT_WINDOW_AREA,
+        screen_area: Rect | None = DEFAULT_SCREEN_AREA,
+        pointer: tuple[int, int] | None = (500, 500),
     ) -> None:
         self.window = window
         self.type_failure = type_failure
         self.session_failure = session_failure
+        self.window_area = window_area
+        self.screen_area = screen_area
+        self.pointer = pointer
         self.typed: list[str] = []
         self.targets: list[int | None] = []
         self.watcher: FakeWatcher | None = None
@@ -63,6 +74,15 @@ class FakePlatform:
     def hotkey_watcher(self, on_change) -> FakeWatcher:
         self.watcher = FakeWatcher(on_change)
         return self.watcher
+
+    def window_rect(self, window: int | None) -> Rect | None:
+        return self.window_area if window is not None else None
+
+    def screen_rect(self) -> Rect | None:
+        return self.screen_area
+
+    def pointer_position(self) -> tuple[int, int] | None:
+        return self.pointer
 
 
 class FakeApi:
@@ -151,6 +171,7 @@ class FakeRecorder:
         self.returncode = returncode
         self.interrupted = interrupted
         self.stderr = stderr
+        self.level = 0
         self.discarded = False
 
     def stop(self) -> bool:

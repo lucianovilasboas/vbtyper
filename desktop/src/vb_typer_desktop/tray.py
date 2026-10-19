@@ -1,4 +1,4 @@
-"""Bandeja do sistema: ícones e menu, por um processo auxiliar GTK3.
+"""Processos auxiliares GTK3: bandeja do sistema e indicador de ditado.
 
 O Python do sistema é usado porque o PyGObject/GTK não empacota bem no
 PyInstaller; a comunicação é feita pelo socket de controle (um JSON por linha).
@@ -13,6 +13,7 @@ from pathlib import Path
 
 SYSTEM_PYTHON = "/usr/bin/python3"
 HELPER_RELATIVE = "tray/tray_helper.py"
+INDICATOR_RELATIVE = "tray/indicator.py"
 ASSETS_RELATIVE = "assets"
 
 
@@ -28,26 +29,23 @@ def resource_path(relative: str) -> Path:
     return resource_base() / relative
 
 
+def gtklib_available() -> bool:
+    """O 1.x usa o ``gdbus`` como sinal barato de que o GTK do sistema existe."""
+    return bool(shutil.which("gdbus") and Path(SYSTEM_PYTHON).exists())
+
+
 def tray_available() -> bool:
-    return bool(
-        shutil.which("gdbus")
-        and Path(SYSTEM_PYTHON).exists()
-        and resource_path(HELPER_RELATIVE).exists()
-    )
+    return gtklib_available() and resource_path(HELPER_RELATIVE).exists()
 
 
-def start_tray(socket_path: Path) -> subprocess.Popen[bytes] | None:
-    """Sobe o helper da bandeja; ``None`` quando o ambiente não o suporta."""
-    if not tray_available():
-        return None
+def indicator_available() -> bool:
+    return gtklib_available() and resource_path(INDICATOR_RELATIVE).exists()
+
+
+def _spawn(relative: str, arguments: list[str]) -> subprocess.Popen[bytes] | None:
     try:
         return subprocess.Popen(
-            [
-                SYSTEM_PYTHON,
-                str(resource_path(HELPER_RELATIVE)),
-                str(socket_path),
-                str(resource_path(ASSETS_RELATIVE)),
-            ],
+            [SYSTEM_PYTHON, str(resource_path(relative)), *arguments],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -55,3 +53,17 @@ def start_tray(socket_path: Path) -> subprocess.Popen[bytes] | None:
         )
     except OSError:
         return None
+
+
+def start_tray(socket_path: Path) -> subprocess.Popen[bytes] | None:
+    """Sobe o helper da bandeja; ``None`` quando o ambiente não o suporta."""
+    if not tray_available():
+        return None
+    return _spawn(HELPER_RELATIVE, [str(socket_path), str(resource_path(ASSETS_RELATIVE))])
+
+
+def start_indicator(socket_path: Path) -> subprocess.Popen[bytes] | None:
+    """Sobe o indicador visual; ``None`` quando o ambiente não o suporta."""
+    if not indicator_available():
+        return None
+    return _spawn(INDICATOR_RELATIVE, [str(socket_path)])

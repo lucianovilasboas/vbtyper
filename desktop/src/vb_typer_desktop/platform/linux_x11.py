@@ -1,4 +1,4 @@
-"""Adaptador Linux/X11: atalho global, foco de entrada e digitação direta."""
+"""Adaptador Linux/X11: atalho global, foco, geometria e digitação direta."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+
+from vb_typer_desktop.geometry import Rect
 
 # Keysyms (nomes fixos do X) das teclas que contam como Ctrl e como Super.
 CTRL_KEYSYMS = (0xFFE3, 0xFFE4)  # Control_L, Control_R
@@ -18,6 +20,7 @@ SUPER_KEYSYMS = (
     0xFFED,
     0xFFEE,  # Hyper_L, Hyper_R
 )
+MAX_PARENT_DEPTH = 64
 
 
 def read_active_window() -> int | None:
@@ -29,6 +32,106 @@ def read_active_window() -> int | None:
         try:
             focus = connection.get_input_focus().focus
             return getattr(focus, "id", None)
+        finally:
+            connection.close()
+    except Exception:
+        return None
+
+
+def _toplevel(connection, window):
+    """Sobe do widget em foco até a janela que o gerenciador de janelas controla."""
+    root = connection.screen().root
+    current = window
+    for _ in range(MAX_PARENT_DEPTH):
+        parent = current.query_tree().parent
+        if parent is None or parent.id == root.id:
+            return current
+        current = parent
+    return current
+
+
+def _has_window_state(connection, window, name: str) -> bool:
+    from Xlib import Xatom
+
+    state = window.get_full_property(connection.intern_atom("_NET_WM_STATE"), Xatom.ATOM)
+    if state is None or not state.value:
+        return False
+    return connection.intern_atom(name) in state.value
+
+
+def _is_fullscreen(connection, window) -> bool:
+    """O estado fica na janela do cliente, não na moldura do gerenciador."""
+    if _has_window_state(connection, window, "_NET_WM_STATE_FULLSCREEN"):
+        return True
+    try:
+        children = window.query_tree().children
+    except Exception:
+        return False
+    return any(
+        _has_window_state(connection, child, "_NET_WM_STATE_FULLSCREEN") for child in children
+    )
+
+
+def window_rect(window_id: int | None) -> Rect | None:
+    """Área da janela de topo em coordenadas da raiz.
+
+    Devolve ``None`` quando a janela sumiu ou está em tela cheia — nesse caso o
+    indicador não deve aparecer por cima.
+    """
+    if window_id is None:
+        return None
+    try:
+        from Xlib import display
+
+        connection = display.Display()
+        try:
+            root = connection.screen().root
+            toplevel = _toplevel(connection, connection.create_resource_object("window", window_id))
+            if toplevel.id == root.id:
+                return None
+            if _is_fullscreen(connection, toplevel):
+                return None
+            geometry = toplevel.get_geometry()
+            if not (geometry.width and geometry.height):
+                return None
+            x, y = int(geometry.x), int(geometry.y)
+            if toplevel.query_tree().parent.id != root.id:
+                # Sem gerenciador de janelas reparentando: traduz para a raiz.
+                position = root.translate_coords(toplevel, 0, 0)
+                x, y = int(position.x), int(position.y)
+            return Rect(x, y, int(geometry.width), int(geometry.height))
+        finally:
+            connection.close()
+    except Exception:
+        return None
+
+
+def screen_rect() -> Rect | None:
+    """Área da tela em coordenadas da raiz (o desktop virtual inteiro)."""
+    try:
+        from Xlib import display
+
+        connection = display.Display()
+        try:
+            geometry = connection.screen().root.get_geometry()
+            if not (geometry.width and geometry.height):
+                return None
+            return Rect(int(geometry.x), int(geometry.y), int(geometry.width), int(geometry.height))
+        finally:
+            connection.close()
+    except Exception:
+        return None
+
+
+def pointer_position() -> tuple[int, int] | None:
+    """Posição do ponteiro em coordenadas da raiz."""
+    try:
+        from Xlib import display
+
+        connection = display.Display()
+        try:
+            pointer = connection.screen().root.query_pointer()
+            return int(pointer.root_x), int(pointer.root_y)
         finally:
             connection.close()
     except Exception:
@@ -297,3 +400,12 @@ class LinuxX11Platform:
 
     def hotkey_watcher(self, on_change: Callable[[str, bool], None]) -> ModifierWatcher:
         return ModifierWatcher(modifier_groups(), on_change)
+
+    def window_rect(self, window: int | None) -> Rect | None:
+        return window_rect(window)
+
+    def screen_rect(self) -> Rect | None:
+        return screen_rect()
+
+    def pointer_position(self) -> tuple[int, int] | None:
+        return pointer_position()

@@ -234,7 +234,8 @@ desktop/
 
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
 inserir. O texto vai direto no ponto do cursor do aplicativo em foco, por XTEST —
-não há área de transferência nem colagem. Detalhes em
+não há área de transferência nem colagem. Enquanto grava, um indicador silencioso
+com a onda do microfone aparece junto da janela em foco. Detalhes em
 [`desktop/README.md`](desktop/README.md).
 
 ## Próximas fases

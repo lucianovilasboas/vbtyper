@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -113,6 +114,47 @@ def test_last_stderr_returns_final_line(tmp_path):
     recorder = audio.Recorder(tmp_path / "a.wav")
     recorder._stderr.extend(b"linha um\nlinha dois\n")
     assert recorder.last_stderr() == "linha dois"
+
+
+def test_last_stderr_ignores_the_level_meter(tmp_path):
+    """O medidor ``-V mono`` polui o stderr; ele não é uma mensagem de erro."""
+    recorder = audio.Recorder(tmp_path / "a.wav")
+    recorder._stderr.extend(b"device busy\n  50%|#####     |\n 100%|##########|\n")
+    assert recorder.last_stderr() == "device busy"
+
+
+def test_last_stderr_ignores_the_arecord_banner(tmp_path):
+    recorder = audio.Recorder(tmp_path / "a.wav")
+    recorder._stderr.extend(
+        b"Gravando WAVE '/tmp/x.wav' : Signed 16 bit Little Endian, Taxa 16000 Hz, Mono\n"
+    )
+    assert recorder.last_stderr() == ""
+
+
+def test_capture_asks_for_the_level_meter():
+    command = audio.capture_command(Path("/tmp/x.wav"))
+    assert "-V" in command and command[command.index("-V") + 1] == "mono"
+
+
+def test_level_follows_the_arecord_meter(tmp_path):
+    recorder = audio.Recorder(tmp_path / "a.wav")
+    recorder._update_level(b"  10%|#   |")
+    assert recorder.level == 10
+    recorder._update_level(b"  87%|#####|")
+    assert recorder.level == 87
+
+
+def test_level_never_exceeds_one_hundred(tmp_path):
+    recorder = audio.Recorder(tmp_path / "a.wav")
+    recorder._update_level(b"999%|####|")
+    assert recorder.level == 100
+
+
+def test_level_stays_when_the_chunk_has_no_meter(tmp_path):
+    recorder = audio.Recorder(tmp_path / "a.wav")
+    recorder._update_level(b"  64%|####|")
+    recorder._update_level("pulse: conexão perdida".encode())
+    assert recorder.level == 64
 
 
 def test_discard_removes_file(tmp_path):

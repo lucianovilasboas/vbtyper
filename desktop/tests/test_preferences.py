@@ -1,0 +1,87 @@
+"""Preferências do cliente desktop: padrões, validação e ida-e-volta."""
+
+from __future__ import annotations
+
+import json
+
+from vb_typer_desktop import preferences
+
+VALID = {
+    "notices": "balloons",
+    "anchor": "pointer",
+    "position": "top-center",
+    "sound": True,
+    "size": 64,
+}
+
+
+def test_defaults_show_the_indicator_without_sound():
+    current = preferences.Preferences()
+    assert current.shows_indicator is True
+    assert current.shows_routine_balloons is False
+    assert current.shows_error_balloons is True
+    assert current.sound is False
+
+
+def test_balloons_mode_restores_the_old_behaviour():
+    current = preferences.from_mapping({"notices": "balloons"})
+    assert current.shows_routine_balloons is True
+    assert current.shows_indicator is False
+
+
+def test_none_mode_silences_everything():
+    current = preferences.from_mapping({"notices": "none"})
+    assert not current.shows_indicator
+    assert not current.shows_routine_balloons
+    assert not current.shows_error_balloons
+
+
+def test_both_mode_shows_both():
+    current = preferences.from_mapping({"notices": "both"})
+    assert current.shows_indicator and current.shows_routine_balloons
+
+
+def test_invalid_values_fall_back_to_defaults():
+    current = preferences.from_mapping(
+        {
+            "notices": "gritaria",
+            "anchor": "lua",
+            "position": "canto",
+            "sound": "sim",
+            "size": 5000,
+        }
+    )
+    assert current == preferences.Preferences()
+
+
+def test_broken_size_is_ignored():
+    assert preferences.from_mapping({"size": 10}).size == preferences.DEFAULTS["size"]
+    assert preferences.from_mapping({"size": True}).size == preferences.DEFAULTS["size"]
+    assert preferences.from_mapping({"size": "40"}).size == preferences.DEFAULTS["size"]
+
+
+def test_non_mapping_input_is_ignored():
+    assert preferences.from_mapping(["nada"]) == preferences.Preferences()
+
+
+def test_load_without_file_uses_defaults(tmp_path):
+    assert preferences.load(tmp_path / "nao-existe.json") == preferences.Preferences()
+
+
+def test_load_ignores_corrupted_file(tmp_path):
+    target = tmp_path / "desktop.json"
+    target.write_text("{ isso não é json", encoding="utf-8")
+    assert preferences.load(target) == preferences.Preferences()
+
+
+def test_save_and_load_round_trip(tmp_path):
+    target = tmp_path / "config" / "desktop.json"
+    saved = preferences.Preferences(**VALID)
+    assert preferences.save(saved, target) == target
+    assert preferences.load(target) == saved
+    assert json.loads(target.read_text(encoding="utf-8"))["notices"] == "balloons"
+
+
+def test_preference_file_follows_xdg(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert preferences.preference_file() == tmp_path / "vb-typer" / "desktop.json"
