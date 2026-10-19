@@ -81,6 +81,7 @@ def test_import_is_idempotent_and_copies_audio(temp_settings, make_wav):
     assert first.imported == 2
     assert first.skipped == 0
     assert first.audio_copied == 1
+    assert first.audio_reused == 0
     assert first.audio_missing == 0
     assert not first.errors
 
@@ -111,6 +112,48 @@ def test_source_database_is_opened_read_only(temp_settings, make_wav):
     before = legacy.read_bytes()
     run_import(source=legacy, audio_dir=None, database=temp_settings / "data" / "vb-typer.db")
     assert legacy.read_bytes() == before
+
+
+def test_audio_already_in_place_is_not_duplicated(temp_settings, make_wav):
+    """No Linux o 1.x grava no mesmo diretório do 2.x: referenciar, não duplicar."""
+    data_dir = temp_settings / "data"
+    audio = data_dir / "audio" / "2026" / "01" / "ja-no-lugar.wav"
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    audio.write_bytes(make_wav(1.0))
+
+    legacy = temp_settings / "legacy" / "history.db"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(legacy)
+    connection.executescript(LEGACY_SCHEMA)
+    connection.execute(
+        "INSERT INTO transcriptions (created_at, audio_path, audio_bytes, duration_s, text,"
+        " model, language, inserted) VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "2026-01-05 09:00:00",
+            str(audio),
+            audio.stat().st_size,
+            1.0,
+            "já estava aqui",
+            "gpt-transcribe",
+            "pt",
+            1,
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    report = run_import(source=legacy, audio_dir=None, database=data_dir / "vb-typer.db")
+    assert report.imported == 1
+    assert report.audio_copied == 0
+    assert report.audio_reused == 1
+
+    connection = sqlite3.connect(data_dir / "vb-typer.db")
+    try:
+        stored = connection.execute("SELECT audio_path FROM transcriptions").fetchone()[0]
+    finally:
+        connection.close()
+    assert Path(stored) == audio
+    assert len(list(audio.parent.glob("*.wav"))) == 1
 
 
 def test_dry_run_does_not_create_target(temp_settings, make_wav):

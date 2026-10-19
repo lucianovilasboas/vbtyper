@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import shutil
 import sqlite3
 import sys
@@ -44,6 +45,7 @@ class ImportReport:
     imported: int = 0
     skipped: int = 0
     audio_copied: int = 0
+    audio_reused: int = 0
     audio_missing: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -52,6 +54,7 @@ class ImportReport:
             f"Importadas: {self.imported}",
             f"Ignoradas (já existiam): {self.skipped}",
             f"Áudios copiados: {self.audio_copied}",
+            f"Áudios já no lugar (não duplicados): {self.audio_reused}",
             f"Áudios ausentes: {self.audio_missing}",
         ]
         if self.errors:
@@ -74,13 +77,30 @@ def _legacy_columns(connection: sqlite3.Connection) -> list[str]:
     return [column for column in LEGACY_COLUMNS if column in available]
 
 
-def _copy_audio(source: Path, audio_root: Path, moment: time.struct_time | None) -> Path | None:
+def _same_file(first: Path, second: Path) -> bool:
+    try:
+        return os.path.samefile(first, second)
+    except OSError:
+        return False
+
+
+def _copy_audio(
+    source: Path, audio_root: Path, moment: time.struct_time | None
+) -> tuple[Path, bool] | None:
+    """Leva o áudio para o diretório do 2.x; devolve ``(caminho, houve_cópia)``.
+
+    ``None`` quando o arquivo de origem não existe. No Linux o app 1.x grava no
+    *mesmo* diretório de áudio do 2.x: nesse caso o arquivo já está no lugar e é
+    referenciado, em vez de duplicado com sufixo ``-1``.
+    """
     if not source.is_file():
         return None
     stamp = moment or time.localtime(source.stat().st_mtime)
     folder = audio_root / time.strftime("%Y", stamp) / time.strftime("%m", stamp)
     folder.mkdir(parents=True, exist_ok=True)
     destination = folder / source.name
+    if destination.exists() and _same_file(source, destination):
+        return destination, False
     if destination.exists():
         counter = 1
         while True:
@@ -92,7 +112,7 @@ def _copy_audio(source: Path, audio_root: Path, moment: time.struct_time | None)
     shutil.copy2(source, destination)
     with contextlib.suppress(OSError):
         destination.chmod(0o600)
-    return destination
+    return destination, True
 
 
 def run_import(
@@ -149,11 +169,15 @@ def run_import(
                     moment = time.strptime(str(data["created_at"]), "%Y-%m-%d %H:%M:%S")
                 except (ValueError, KeyError):
                     moment = None
-                copied = _copy_audio(candidate, audio_root, moment)
-                if copied is None:
+                result = _copy_audio(candidate, audio_root, moment)
+                if result is None:
                     report.audio_missing += 1
                 else:
-                    report.audio_copied += 1
+                    copied, copied_now = result
+                    if copied_now:
+                        report.audio_copied += 1
+                    else:
+                        report.audio_reused += 1
             try:
                 container.history.record(
                     text=str(data.get("text") or ""),
