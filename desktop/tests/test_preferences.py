@@ -60,6 +60,16 @@ def test_broken_size_is_ignored():
     assert preferences.from_mapping({"size": "40"}).size == preferences.DEFAULTS["size"]
 
 
+def test_tuning_defaults_and_bounds():
+    assert preferences.Preferences().speed == 1.0
+    assert preferences.Preferences().sensitivity == 1.0
+    assert preferences.from_mapping({"speed": 2.0, "sensitivity": 1.5}).speed == 2.0
+    assert preferences.from_mapping({"speed": 99}).speed == preferences.MAX_TUNING
+    assert preferences.from_mapping({"speed": 0}).speed == preferences.MIN_TUNING
+    assert preferences.from_mapping({"speed": "rápido"}).speed == 1.0
+    assert preferences.from_mapping({"sensitivity": True}).sensitivity == 1.0
+
+
 def test_non_mapping_input_is_ignored():
     assert preferences.from_mapping(["nada"]) == preferences.Preferences()
 

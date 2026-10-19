@@ -17,8 +17,11 @@ DEFAULTS = {
     "position": "bottom-center",
     "sound": False,
     "size": 40,
+    "speed": 1.0,
+    "sensitivity": 1.0,
 }
 MIN_SIZE, MAX_SIZE = 24, 96
+MIN_TUNING, MAX_TUNING = 0.5, 3.0
 
 
 def preference_file() -> Path:
@@ -35,6 +38,9 @@ class Preferences:
       * ``balloons``  — comportamento antigo: balão do sistema para tudo;
       * ``both``      — indicador e balões de rotina;
       * ``none``      — nada na tela.
+
+    ``speed`` e ``sensitivity`` ajustam o indicador: quanto maior, mais rápido
+    ele reage e mais altas ficam as barras para a mesma voz.
     """
 
     notices: str = DEFAULTS["notices"]
@@ -42,6 +48,8 @@ class Preferences:
     position: str = DEFAULTS["position"]
     sound: bool = DEFAULTS["sound"]
     size: int = DEFAULTS["size"]
+    speed: float = DEFAULTS["speed"]
+    sensitivity: float = DEFAULTS["sensitivity"]
 
     @property
     def shows_indicator(self) -> bool:
@@ -60,6 +68,13 @@ def _pick(value, allowed: tuple[str, ...], default: str) -> str:
     return value if value in allowed else default
 
 
+def _tuning(value, default: float) -> float:
+    """Número de ajuste (velocidade/altura), dentro de uma faixa sensata."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return min(MAX_TUNING, max(MIN_TUNING, float(value)))
+
+
 def from_mapping(values) -> Preferences:
     """Lê preferências de um dicionário, ignorando valores inválidos."""
     if not isinstance(values, dict):
@@ -74,6 +89,8 @@ def from_mapping(values) -> Preferences:
         position=_pick(values.get("position"), POSITIONS, DEFAULTS["position"]),
         sound=sound if isinstance(sound, bool) else DEFAULTS["sound"],
         size=size,
+        speed=_tuning(values.get("speed"), DEFAULTS["speed"]),
+        sensitivity=_tuning(values.get("sensitivity"), DEFAULTS["sensitivity"]),
     )
 
 

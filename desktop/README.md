@@ -59,6 +59,11 @@ atrapalha o aplicativo em uso. Não aparece em tela cheia.
 Quem decide o visual é o cliente; o helper (`tray/indicator.py`) só desenha o que
 recebe pelo socket de controle.
 
+A onda vem do **nível real do microfone** (`arecord -V mono`), não de uma
+animação: a captura usa `--period-size=256` para o nível sair a cada ~17 ms em vez
+de ~140 ms. O painel aparece em ~60 ms (consulta ociosa) e, já visível, consulta a
+cada 45 ms.
+
 ### Preferências
 
 `~/.config/vb-typer/desktop.json` (criado por `--write-preferences`):
@@ -70,6 +75,11 @@ recebe pelo socket de controle.
 | `position` | `bottom-center` | `bottom-center`, `bottom-left`, `bottom-right`, `top-center` |
 | `sound` | `false` | som nos balões que ainda existirem |
 | `size` | `40` | altura do painel em pixels (24 a 96) |
+| `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
+| `sensitivity` | `1.0` | quão altas ficam as barras para a mesma voz (0.5 a 3.0) |
+
+Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
+`sensitivity`. Mudanças valem no próximo start.
 
 Para voltar ao comportamento antigo sem editar arquivo:
 
@@ -101,6 +111,14 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
 - **Janela POPUP e `Gtk.Window.resize`.** Uma janela `POPUP` se dimensiona pelo
   pedido do filho: sem `set_size_request` no `DrawingArea` o GTK mapeia num
   tamanho padrão e o painel sai gigante.
+- **O período da captura define a vida da onda.** O medidor do `arecord` sai a
+  cada período de captura: o padrão dava ~7 atualizações por segundo (140 ms) e
+  deixava a onda lenta, por melhor que fosse a animação. Com
+  `--period-size=256` são ~58 por segundo (17 ms). Se algum dispositivo reclamar
+  de *xrun*, 512 (32 ms) é o meio-termo.
+- **Suavização em constante de tempo, não por quadro.** A onda sobe em ~35 ms e
+  volta em ~100 ms, independente da taxa de quadros — antes eram frações fixas
+  por quadro, o que amarravam o comportamento à taxa de desenho.
 - **Posição vem do cliente, não do helper.** A escolha de âncora e o recorte na
   tela são cálculo puro (`geometry.py`, testado); o desenho de fato só se
   verifica no olho, numa sessão X11.

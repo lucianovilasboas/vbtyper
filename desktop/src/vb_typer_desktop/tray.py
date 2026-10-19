@@ -62,8 +62,17 @@ def start_tray(socket_path: Path) -> subprocess.Popen[bytes] | None:
     return _spawn(HELPER_RELATIVE, [str(socket_path), str(resource_path(ASSETS_RELATIVE))])
 
 
-def start_indicator(socket_path: Path) -> subprocess.Popen[bytes] | None:
+def start_indicator(
+    socket_path: Path, speed: float = 1.0, sensitivity: float = 1.0
+) -> subprocess.Popen[bytes] | None:
     """Sobe o indicador visual; ``None`` quando o ambiente não o suporta."""
     if not indicator_available():
         return None
-    return _spawn(INDICATOR_RELATIVE, [str(socket_path)])
+    return _spawn(
+        INDICATOR_RELATIVE,
+        [
+            str(socket_path),
+            f"--speed={speed:.2f}",
+            f"--sensitivity={sensitivity:.2f}",
+        ],
+    )

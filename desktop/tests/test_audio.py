@@ -136,6 +136,15 @@ def test_capture_asks_for_the_level_meter():
     assert "-V" in command and command[command.index("-V") + 1] == "mono"
 
 
+def test_capture_uses_a_short_period_for_a_live_level():
+    """O período define a resolução do medidor: o padrão dava só ~7 por segundo."""
+    command = audio.capture_command(Path("/tmp/x.wav"))
+    assert "--period-size" in command
+    frames = int(command[command.index("--period-size") + 1])
+    assert frames <= 512  # 32 ms a 16 kHz
+    assert 16000 / frames >= 30  # pelo menos 30 atualizações por segundo
+
+
 def test_level_follows_the_arecord_meter(tmp_path):
     recorder = audio.Recorder(tmp_path / "a.wav")
     recorder._update_level(b"  10%|#   |")

@@ -50,6 +50,7 @@ def _status(api: ApiClient, current: preferences.Preferences) -> int:
         f"Avisos: {current.notices} · âncora: {current.anchor}/{current.position} "
         f"· som: {'sim' if current.sound else 'não'} · tamanho: {current.size}"
     )
+    print(f"Reação: velocidade {current.speed:g} · sensibilidade {current.sensitivity:g}")
     try:
         ready = api.ready()
     except ApiError as exc:
@@ -122,7 +123,9 @@ def run_daemon(
         if tray_process is not None:
             helpers.append(tray_process)
     if prefs.shows_indicator:
-        indicator_process = start_indicator(socket_path)
+        indicator_process = start_indicator(
+            socket_path, speed=prefs.speed, sensitivity=prefs.sensitivity
+        )
         if indicator_process is not None:
             helpers.append(indicator_process)
     try:

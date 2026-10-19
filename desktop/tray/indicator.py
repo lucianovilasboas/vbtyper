@@ -17,15 +17,23 @@ import sys
 import time
 
 BARS = 14
-POLL_MS = 90
+# Enquanto o painel está visível a consulta é rápida; ocioso, ele é econômico.
+# 60 ms é o limite de quanto o painel pode demorar a aparecer após o atalho.
+POLL_VISIBLE_MS = 45
+POLL_IDLE_MS = 60
 FRAME_MS = 40
-ATTACK = 0.55
-RELEASE = 0.12
-FADE_STEP = 0.18
+# Constantes de tempo do indicador, em segundos: sobe quase junto com a voz e
+# volta rápido ao silêncio (antes era ~25 ms para subir e ~330 ms para cair).
+ATTACK_S = 0.035
+RELEASE_S = 0.100
+FADE_STEP = 0.30
 HIDE_POLLS = 3
-FAILS_TO_QUIT = 8
-# Nível de microfone que já desenha a barra mais alta (fala normal fica bem abaixo).
-FULL_LEVEL = 40.0
+FAILS_TO_QUIT = 12
+# Nível de microfone que já desenha a barra mais alta. Com este microfone a fala
+# normal pica entre 5% e 45%, então o topo fica logo acima disso.
+FULL_LEVEL = 36.0
+# Curva aplicada ao nível: levanta a faixa média, para a onda "sentir" mais.
+GAMMA = 0.75
 DEBUG_PATH = os.environ.get("VB_TYPER_INDICATOR_DEBUG")
 
 # A onda usa o roxo de destaque do app (o mesmo `accent` do 1.x).
@@ -51,15 +59,24 @@ def _mix(first, second, ratio: float) -> tuple[float, float, float]:
 class Levels:
     """Histórico de níveis suavizados, para a onda acompanhar a fala sem tremer."""
 
-    def __init__(self, bars: int = BARS) -> None:
+    def __init__(
+        self,
+        bars: int = BARS,
+        attack_s: float = ATTACK_S,
+        release_s: float = RELEASE_S,
+    ) -> None:
         self.bars = bars
+        self.attack_s = attack_s
+        self.release_s = release_s
         self.shown = 0.0
         self.values = [0.0] * bars
 
-    def push(self, target) -> None:
+    def push(self, target, elapsed: float = FRAME_MS / 1000) -> None:
+        """Aproxima do alvo em ``elapsed`` segundos (constante de tempo, não por quadro)."""
         goal = max(0.0, min(100.0, float(target)))
-        rate = ATTACK if goal > self.shown else RELEASE
-        self.shown += (goal - self.shown) * rate
+        tau = self.attack_s if goal > self.shown else self.release_s
+        factor = 1.0 if tau <= 0 else 1.0 - math.exp(-max(0.0, elapsed) / tau)
+        self.shown += (goal - self.shown) * factor
         self.values.append(self.shown)
         del self.values[: -self.bars]
 
@@ -97,7 +114,7 @@ def phase_from_state(state: dict) -> str:
 class Indicator:
     """Painel flutuante com a onda do microfone e o andamento da transcrição."""
 
-    def __init__(self, socket_path: str) -> None:
+    def __init__(self, socket_path: str, speed: float = 1.0, sensitivity: float = 1.0) -> None:
         import gi
 
         gi.require_version("Gtk", "3.0")
@@ -107,7 +124,9 @@ class Indicator:
         self.GLib = GLib
         self.Gtk = Gtk
         self.socket_path = socket_path
-        self.levels = Levels()
+        self.speed = max(0.2, speed)
+        self.sensitivity = max(0.2, sensitivity)
+        self.levels = Levels(attack_s=ATTACK_S / self.speed, release_s=RELEASE_S / self.speed)
         self.phase = "idle"
         self.level = 0
         self._alpha = 1.0
@@ -201,6 +220,8 @@ class Indicator:
             self.window.move(x, y)
             self.window.resize(width, height)
             self.visible = True
+            # Aparece já visível: reação imediata ao atalho, sem fade de entrada.
+            self.opacity = 1.0
             self.position = (x, y)
             _debug(f"mostra em {(x, y)} {size}")
         elif (x, y) != self.position:
@@ -230,8 +251,9 @@ class Indicator:
 
     def tick(self) -> bool:
         now = time.monotonic()
+        interval = POLL_VISIBLE_MS if self.visible else POLL_IDLE_MS
         if now >= self.next_poll:
-            self.next_poll = now + POLL_MS / 1000
+            self.next_poll = now + interval / 1000
             state = self._talk()
             if state is None:
                 self.fails += 1
@@ -313,7 +335,7 @@ class Indicator:
         middle = height / 2
         ceiling = (height - 6) / 2
         for index, value in enumerate(values):
-            ratio = min(1.0, max(0.0, value / FULL_LEVEL))
+            ratio = min(1.0, max(0.0, (value / FULL_LEVEL) ** GAMMA * self.sensitivity))
             amplitude = max(height * 0.10, ratio * ceiling)
             top = middle - amplitude
             bar = amplitude * 2
@@ -353,12 +375,32 @@ class Indicator:
         self._paint(cr, RED)
 
 
+def _tuning(raw: str, default: float) -> float:
+    try:
+        return min(3.0, max(0.5, float(raw)))
+    except ValueError:
+        return default
+
+
 def main(argv: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if argv is None else argv
-    if not arguments:
-        print("uso: indicator.py <socket de controle>", file=sys.stderr)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    socket_path: str | None = None
+    speed = 1.0
+    sensitivity = 1.0
+    for item in arguments:
+        if item.startswith("--speed="):
+            speed = _tuning(item.partition("=")[2], speed)
+        elif item.startswith("--sensitivity="):
+            sensitivity = _tuning(item.partition("=")[2], sensitivity)
+        elif not item.startswith("--"):
+            socket_path = item
+    if socket_path is None:
+        print(
+            "uso: indicator.py <socket de controle> [--speed=N] [--sensitivity=N]",
+            file=sys.stderr,
+        )
         return 2
-    return Indicator(arguments[0]).start()
+    return Indicator(socket_path, speed=speed, sensitivity=sensitivity).start()
 
 
 if __name__ == "__main__":

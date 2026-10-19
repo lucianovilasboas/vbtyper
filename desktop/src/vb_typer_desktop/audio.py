@@ -18,6 +18,10 @@ MAX_AUDIO_BYTES = MAX_AUDIO_SECONDS * 32000 + 4096
 MAX_STDERR_BYTES = 4096
 PCM_FORMAT = (1, 1, 16000, 32000, 2, 16)
 METER_PATTERN = re.compile(rb"([0-9]{1,3})%")
+# Período de captura em quadros (16 ms a 16 kHz). O medidor do ``arecord`` é
+# impresso a cada período: o padrão dá ~7 atualizações por segundo (140 ms), o
+# que deixa a onda lenta. Com 256 quadros ele passa a ~58 por segundo (17 ms).
+CAPTURE_PERIOD_FRAMES = 256
 # Cabeçalho que o arecord imprime ao começar bem; não é mensagem de erro.
 BANNER_MARKERS = ("Gravando WAVE", "Recording WAVE")
 
@@ -36,7 +40,8 @@ def capture_command(path: Path) -> list[str]:
     """Comando do ``arecord``: mono, 16 kHz, 16 bits, WAV, até 120 s.
 
     ``-V mono`` faz o ``arecord`` reportar o nível do microfone no stderr; é o
-    que alimenta as barras de onda do indicador visual.
+    que alimenta as barras de onda do indicador visual. O período define de
+    quanto em quanto tempo esse nível sai.
     """
     return [
         "arecord",
@@ -52,6 +57,8 @@ def capture_command(path: Path) -> list[str]:
         "wav",
         "-d",
         str(MAX_AUDIO_SECONDS),
+        "--period-size",
+        str(CAPTURE_PERIOD_FRAMES),
         "-V",
         "mono",
         str(path),

@@ -175,3 +175,7 @@ desbloqueado: `systemctl --user restart vb-typer-api` resolve.
 - Avisos: indicador visual silencioso por padrão (sem balão, sem som), ancorado
   na base da janela em foco; balões ficam para erro. A volta é
   `--notices balloons`.
+- A onda do indicador usa o nível real do `arecord`, que sai a cada período de
+  captura: por isso a captura usa `--period-size=256` (~17 ms por nível, contra
+  ~140 ms do padrão). `speed` e `sensitivity` no `desktop.json` ajustam a reação
+  sem tocar em código.
