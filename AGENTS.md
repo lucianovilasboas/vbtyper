@@ -52,6 +52,7 @@ uv run vb-typer-desktop            # ditado por Ctrl+Super, com bandeja
 uv run vb-typer-desktop --status   # API, token e preferências
 uv run vb-typer-desktop --self-test
 uv run vb-typer-desktop --notices balloons   # avisos como antes (balões)
+../scripts/install-desktop-service.sh        # habilita no login (systemd)
 ```
 
 Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
@@ -156,6 +157,14 @@ A unit roda `backend/.venv/bin/vb-typer-api` com `WorkingDirectory` no backend
 (para achar o `.env`) e `DBUS_SESSION_BUS_ADDRESS` explícito (para o keyring).
 Se `api_key_configured` vier `false` logo após o login, o cofre ainda não estava
 desbloqueado: `systemctl --user restart vb-typer-api` resolve.
+
+O cliente desktop tem a unit própria (`vb-typer-desktop.service`), instalada por
+`./scripts/install-desktop-service.sh`, que também cria a entrada no menu. Ela
+declara `DISPLAY` e `XAUTHORITY` porque `graphical-session.target` **não** é
+ativado no Cinnamon (por isso o alvo é `default.target`, como no backend) e o
+cliente falha sem sessão gráfica — daí `Restart=on-failure` com `RestartSec=3`,
+que resolve sozinho se o serviço subir antes do X. O cliente trata `SIGTERM`,
+então parar ou reiniciar o serviço desmonta bandeja e indicador junto.
 
 ## Estado atual
 

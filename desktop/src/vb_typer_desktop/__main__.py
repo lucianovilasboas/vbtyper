@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -104,6 +105,22 @@ def _teardown(daemon: Daemon, server: ControlServer, helpers: list, api: ApiClie
     api.close()
 
 
+def _install_stop_handlers(daemon: Daemon) -> None:
+    """Encerra pelo caminho normal em SIGTERM/SIGINT.
+
+    Sem isto, um ``systemctl --user restart`` mata o processo na hora e deixa a
+    bandeja e o indicador para trás (eles só sairiam sozinhos ao perceber o
+    socket morto). O handler apenas sinaliza; quem desmonta é o fluxo normal.
+    """
+
+    def request_stop(signum, frame) -> None:
+        daemon.done.set()
+
+    for name in ("SIGTERM", "SIGINT"):
+        with contextlib.suppress(ValueError, OSError):
+            signal.signal(getattr(signal, name), request_stop)
+
+
 def run_daemon(
     api: ApiClient, with_tray: bool, open_browser: bool, prefs: preferences.Preferences
 ) -> int:
@@ -146,6 +163,7 @@ def run_daemon(
         f"Interface em {ui_url(api.base_url)}",
         flush=True,
     )
+    _install_stop_handlers(daemon)
     try:
         daemon.wait()
     except KeyboardInterrupt:

@@ -87,6 +87,10 @@ def main() -> int:
         tint(tray, low, high).save(TRAY_DIR / f"tray_{name}.png")
         print(f"desktop/assets/tray_{name}.png (rampa {low} -> {high})")
 
+    # Ícone do aplicativo: usado pela entrada do menu (.desktop).
+    mark.resize((256, 256), Image.LANCZOS).save(TRAY_DIR / "logo.png")
+    print("desktop/assets/logo.png (256x256, entrada do menu)")
+
     mark.resize((128, 128), Image.LANCZOS).save(WEB_DIR / "logo.png")
     mark.resize((32, 32), Image.LANCZOS).save(WEB_DIR / "favicon.png")
     print("web/static/logo.png (128x128) e web/static/favicon.png (32x32)")

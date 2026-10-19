@@ -27,6 +27,33 @@ systemctl --user status vb-typer-api
 cd ../backend && uv run vb-typer-api --setup
 ```
 
+## Rodar como serviço (autostart)
+
+Para o ditado subir sozinho no login, sem depender de terminal aberto:
+
+```bash
+./scripts/install-desktop-service.sh
+```
+
+O instalador grava a unit `vb-typer-desktop.service` (a partir de
+`deploy/systemd/`), habilita no login, instala o ícone e cria a entrada no menu de
+aplicativos. A unit roda `desktop/.venv/bin/vb-typer-desktop` com `DISPLAY` e
+`XAUTHORITY` explícitos, reinicia em falha e — por causa do tratamento de
+`SIGTERM` — desmonta bandeja e indicador quando o serviço para.
+
+```bash
+systemctl --user status vb-typer-desktop
+journalctl --user -u vb-typer-desktop -f
+systemctl --user restart vb-typer-desktop
+systemctl --user disable --now vb-typer-desktop   # + rm a unit e o .desktop
+```
+
+Se você já tiver uma instância rodando por fora, encerre-a antes (menu *Sair* da
+bandeja): o serviço detectaria a instância existente e apenas abriria a interface.
+
+> A entrada do menu aponta para o mesmo binário. Com o serviço no ar, clicar nela
+> não cria um segundo ditado — apenas abre a interface no navegador.
+
 ## Como funciona
 
 ```
@@ -181,5 +208,6 @@ janela.
 
 ## Pendências
 
-- Windows/macOS: a camada `platform/` está pronta para receber os adaptadores.
-- Autostart no login e empacotamento one-file (PyInstaller).
+- Empacotamento one-file (PyInstaller), lembrando que a bandeja e o indicador
+  continuam como helpers no Python do sistema.
+- macOS e Windows pela camada `platform/` (fora do escopo atual).

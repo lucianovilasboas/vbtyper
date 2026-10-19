@@ -75,3 +75,26 @@ def test_self_test_reports_a_missing_recorder(monkeypatch, capsys):
 
     assert module._self_test(Api()) == 1
     assert "arecord" in capsys.readouterr().err
+
+
+def test_stop_signal_shuts_down_by_the_normal_path():
+    """SIGTERM precisa encerrar pelo fluxo normal, senão o systemd mata o
+    processo e deixa bandeja e indicador órfãos."""
+    import signal
+    import threading
+
+    class FakeDaemon:
+        def __init__(self):
+            self.done = threading.Event()
+
+    daemon = FakeDaemon()
+    original = signal.getsignal(signal.SIGTERM)
+    try:
+        main_module._install_stop_handlers(daemon)
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler)
+        assert not daemon.done.is_set()
+        handler(signal.SIGTERM, None)
+        assert daemon.done.is_set()
+    finally:
+        signal.signal(signal.SIGTERM, original)

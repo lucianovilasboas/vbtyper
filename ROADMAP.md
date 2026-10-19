@@ -135,14 +135,19 @@ tem CSV) e um filtro de modelo na tela de atividade.
 
 ## 3. Cliente desktop: autostart e empacotamento
 
-**Hoje** o cliente roda por `uv run` num processo desanexado: **não sobe no
-login** e não reinicia em falha.
+**Autostart feito em `v0.4.2`.** O cliente sobe no login por
+`vb-typer-desktop.service` (unit de usuário), instalado com
+`./scripts/install-desktop-service.sh`, que também grava a entrada no menu de
+aplicativos com a marca. A unit declara `DISPLAY`/`XAUTHORITY` porque
+`graphical-session.target` não é ativado no Cinnamon, e o cliente trata `SIGTERM`
+para desmontar bandeja e indicador ao parar.
 
-- Unit systemd de usuário para o cliente, nos moldes da do backend
-  (`deploy/systemd/vb-typer-api.service` + `scripts/install-service.sh`);
-- entrada no menu de aplicativos (`.desktop`);
-- empacotamento one-file (PyInstaller), lembrando que **PyGObject não empacota**:
-  a bandeja e o indicador continuam como helpers no Python do sistema.
+### O que falta desta seção
+
+**Empacotamento one-file (PyInstaller)** — para distribuir sem exigir `uv` e o
+repositório no disco. Lembrando que **PyGObject não empacota**: a bandeja e o
+indicador continuam como helpers rodando no Python do sistema, e o pacote precisa
+levar `tray/` e `assets/` (o `tray.resource_base()` já procura em `_MEIPASS`).
 
 ---
 

@@ -1,0 +1,23 @@
+[Unit]
+Description=VB Typer Desktop (ditado por voz por atalho global)
+Documentation=file://@DESKTOP_DIR@/README.md
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=@DESKTOP_DIR@
+Environment=PYTHONUNBUFFERED=1
+# O gerenciador de usuário já costuma ter isto; declarar deixa determinístico
+# quando o serviço sobe junto com a sessão gráfica.
+Environment=DISPLAY=@DISPLAY@
+Environment=XAUTHORITY=@XAUTHORITY@
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=@RUNTIME_DIR@/bus
+ExecStart=@DESKTOP_DIR@/.venv/bin/vb-typer-desktop
+# Se subir antes do X estar pronto, o cliente falha e o systemd tenta de novo.
+Restart=on-failure
+RestartSec=3
+# SIGTERM encerra pelo caminho normal: para o atalho e desmonta bandeja e indicador.
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
