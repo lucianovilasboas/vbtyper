@@ -48,8 +48,8 @@ janela em foco — no terminal, cai junto do prompt onde o texto vai aparecer:
 
 | Fase | Desenho |
 |---|---|
-| Gravando | onda roxa reagindo ao nível real do microfone |
-| Transcrevendo | barra laranja varrendo |
+| Gravando | barra de nível: o preenchimento violeta cresce para a direita com a voz |
+| Transcrevendo | barra laranja varrendo (segmento que desliza) |
 | Inserido | ✓ verde, ~1 s |
 | Erro | ! vermelho, ~3 s |
 
@@ -58,6 +58,12 @@ atrapalha o aplicativo em uso. Não aparece em tela cheia.
 
 Quem decide o visual é o cliente; o helper (`tray/indicator.py`) só desenha o que
 recebe pelo socket de controle.
+
+A fase de gravação é uma **barra de nível ancorada à esquerda** (o mesmo
+vocabulário da tela Ditar do app), com um trilho discreto que a mantém visível no
+silêncio. Isso também é o que a distingue da fase "transcrevendo", que é uma
+barra **que desliza** — mesma família, movimento diferente. Quem preferir a onda
+de barras de volta usa `"shape": "wave"`.
 
 A onda vem do **nível real do microfone** (`arecord -V mono`), não de uma
 animação: a captura usa `--period-size=256` para o nível sair a cada ~17 ms em vez
@@ -77,6 +83,7 @@ cada 45 ms.
 | `size` | `40` | altura do painel em pixels (24 a 96) |
 | `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
 | `sensitivity` | `1.0` | quão altas ficam as barras para a mesma voz (0.5 a 3.0) |
+| `shape` | `bar` | desenho da fase de gravação: `bar` (barra de nível, como na tela web) ou `wave` (a onda de barras) |
 
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
 `sensitivity`. Mudanças valem no próximo start.

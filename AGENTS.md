@@ -184,6 +184,10 @@ de propor trabalho novo.
 - Avisos: indicador visual silencioso por padrão (sem balão, sem som), ancorado
   na base da janela em foco; balões ficam para erro. A volta é
   `--notices balloons`.
+- A fase de gravação do indicador é uma **barra de nível ancorada à esquerda**,
+  como o medidor da tela Ditar; `"shape": "wave"` no `desktop.json` traz de volta
+  a onda de barras. A fase de transcrição é uma barra que desliza — o movimento
+  é o que distingue as duas.
 - A onda do indicador usa o nível real do `arecord`, que sai a cada período de
   captura: por isso a captura usa `--period-size=256` (~17 ms por nível, contra
   ~140 ms do padrão). `speed` e `sensitivity` no `desktop.json` ajustam a reação

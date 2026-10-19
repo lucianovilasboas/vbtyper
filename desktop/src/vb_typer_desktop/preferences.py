@@ -11,6 +11,7 @@ from pathlib import Path
 from vb_typer_desktop.geometry import ANCHORS, POSITIONS
 
 NOTICE_MODES = ("indicator", "balloons", "both", "none")
+SHAPES = ("bar", "wave")
 DEFAULTS = {
     "notices": "indicator",
     "anchor": "window",
@@ -19,6 +20,7 @@ DEFAULTS = {
     "size": 40,
     "speed": 1.0,
     "sensitivity": 1.0,
+    "shape": "bar",
 }
 MIN_SIZE, MAX_SIZE = 24, 96
 MIN_TUNING, MAX_TUNING = 0.5, 3.0
@@ -40,7 +42,9 @@ class Preferences:
       * ``none``      — nada na tela.
 
     ``speed`` e ``sensitivity`` ajustam o indicador: quanto maior, mais rápido
-    ele reage e mais altas ficam as barras para a mesma voz.
+    ele reage e mais altas ficam as barras para a mesma voz. ``shape`` escolhe o
+    desenho da fase de gravação: ``bar`` (barra de nível, como na tela web) ou
+    ``wave`` (a onda de barras que existia antes).
     """
 
     notices: str = DEFAULTS["notices"]
@@ -50,6 +54,7 @@ class Preferences:
     size: int = DEFAULTS["size"]
     speed: float = DEFAULTS["speed"]
     sensitivity: float = DEFAULTS["sensitivity"]
+    shape: str = DEFAULTS["shape"]
 
     @property
     def shows_indicator(self) -> bool:
@@ -91,6 +96,7 @@ def from_mapping(values) -> Preferences:
         size=size,
         speed=_tuning(values.get("speed"), DEFAULTS["speed"]),
         sensitivity=_tuning(values.get("sensitivity"), DEFAULTS["sensitivity"]),
+        shape=_pick(values.get("shape"), SHAPES, DEFAULTS["shape"]),
     )
 
 

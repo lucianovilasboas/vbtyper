@@ -45,6 +45,16 @@ ORANGE = (0.93, 0.55, 0.10)
 RED = (0.85, 0.22, 0.22)
 # Contorno fino e escuro: mantém as formas legíveis sobre qualquer fundo.
 SHADOW = (0.04, 0.02, 0.10, 0.45)
+# Trilho da barra de nível: discreto, mas visível no silêncio (senão o painel
+# parece não ter começado).
+TRACK = (0.42, 0.20, 0.86, 0.34)
+# Gradiente da barra de nível. A onda começa num lilás quase branco (as barras
+# curtas ficam leves), mas numa barra única isso deixava a barra cheia pálida.
+BAR_TOP = (0.58, 0.40, 1.00)
+BAR_BOTTOM = (0.38, 0.13, 0.86)
+# Altura da barra de nível, como fração da altura do painel.
+BAR_RATIO = 0.30
+SHAPES = ("bar", "wave")
 PHASES = ("recording", "processing", "inserted", "error")
 
 
@@ -54,6 +64,18 @@ def _mix(first, second, ratio: float) -> tuple[float, float, float]:
         first[1] + (second[1] - first[1]) * ratio,
         first[2] + (second[2] - first[2]) * ratio,
     )
+
+
+def fill_width(ratio: float, width: float, minimum: float) -> float:
+    """Largura do preenchimento da barra: proporcional, com um mínimo visível.
+
+    O mínimo (a própria altura da barra) evita que, num nível baixinho, sobre
+    apenas um risco invisível de um pixel.
+    """
+    clamped = min(1.0, max(0.0, ratio))
+    if clamped <= 0.0:
+        return 0.0
+    return max(minimum, clamped * width)
 
 
 class Levels:
@@ -114,7 +136,13 @@ def phase_from_state(state: dict) -> str:
 class Indicator:
     """Painel flutuante com a onda do microfone e o andamento da transcrição."""
 
-    def __init__(self, socket_path: str, speed: float = 1.0, sensitivity: float = 1.0) -> None:
+    def __init__(
+        self,
+        socket_path: str,
+        speed: float = 1.0,
+        sensitivity: float = 1.0,
+        shape: str = "bar",
+    ) -> None:
         import gi
 
         gi.require_version("Gtk", "3.0")
@@ -126,6 +154,7 @@ class Indicator:
         self.socket_path = socket_path
         self.speed = max(0.2, speed)
         self.sensitivity = max(0.2, sensitivity)
+        self.shape = shape if shape in SHAPES else "bar"
         self.levels = Levels(attack_s=ATTACK_S / self.speed, release_s=RELEASE_S / self.speed)
         self.phase = "idle"
         self.level = 0
@@ -296,7 +325,10 @@ class Indicator:
         width, height = allocation.width, allocation.height
         self._alpha = max(0.08, self.opacity)
         if self.phase == "recording":
-            self._draw_wave(cr, width, height)
+            if self.shape == "wave":
+                self._draw_wave(cr, width, height)
+            else:
+                self._draw_level_bar(cr, width, height)
         elif self.phase == "processing":
             self._draw_sweep(cr, width, height)
         elif self.phase == "inserted":
@@ -304,6 +336,45 @@ class Indicator:
         else:
             self._draw_warning(cr, width, height)
         return False
+
+    def _level_ratio(self, value) -> float:
+        """Nível do microfone já achatado na curva que a gente calibrou."""
+        return min(1.0, max(0.0, (value / FULL_LEVEL) ** GAMMA * self.sensitivity))
+
+    def _draw_level_bar(self, cr, width, height) -> None:
+        """Trilho fixo com preenchimento que cresce para a direita, como na web.
+
+        A fase "transcrevendo" também é uma barra horizontal, então aqui a barra
+        fica **ancorada à esquerda** e o preenchimento indica o nível — o
+        movimento (crescer) é o que a distingue do segmento que desliza.
+        """
+        import cairo
+
+        bar_height = max(8.0, height * BAR_RATIO)
+        top = (height - bar_height) / 2
+        radius = bar_height / 2
+
+        _rounded(cr, 0.5, top, width - 1, bar_height, radius)
+        cr.set_source_rgba(TRACK[0], TRACK[1], TRACK[2], TRACK[3] * self._alpha)
+        cr.fill_preserve()
+        cr.set_source_rgba(SHADOW[0], SHADOW[1], SHADOW[2], SHADOW[3] * self._alpha)
+        cr.set_line_width(1.0)
+        cr.stroke()
+
+        ratio = self._level_ratio(self.levels.shown)
+        fill = fill_width(ratio, width - 1, bar_height)
+        if fill <= 0:
+            return
+        cr.save()
+        _rounded(cr, 0.5, top, width - 1, bar_height, radius)
+        cr.clip()
+        gradient = cairo.LinearGradient(0, top, 0, top + bar_height)
+        gradient.add_color_stop_rgba(0, *BAR_TOP, self._alpha)
+        gradient.add_color_stop_rgba(1, *BAR_BOTTOM, self._alpha)
+        _rounded(cr, 0.5, top, fill, bar_height, radius)
+        cr.set_source(gradient)
+        cr.fill()
+        cr.restore()
 
     def _paint(self, cr, source) -> None:
         """Preenche o caminho atual e contorna com um traço escuro fino."""
@@ -335,7 +406,7 @@ class Indicator:
         middle = height / 2
         ceiling = (height - 6) / 2
         for index, value in enumerate(values):
-            ratio = min(1.0, max(0.0, (value / FULL_LEVEL) ** GAMMA * self.sensitivity))
+            ratio = self._level_ratio(value)
             amplitude = max(height * 0.10, ratio * ceiling)
             top = middle - amplitude
             bar = amplitude * 2
@@ -387,20 +458,26 @@ def main(argv: list[str] | None = None) -> int:
     socket_path: str | None = None
     speed = 1.0
     sensitivity = 1.0
+    shape = "bar"
     for item in arguments:
         if item.startswith("--speed="):
             speed = _tuning(item.partition("=")[2], speed)
         elif item.startswith("--sensitivity="):
             sensitivity = _tuning(item.partition("=")[2], sensitivity)
+        elif item.startswith("--shape="):
+            candidate = item.partition("=")[2]
+            if candidate in SHAPES:
+                shape = candidate
         elif not item.startswith("--"):
             socket_path = item
     if socket_path is None:
         print(
-            "uso: indicator.py <socket de controle> [--speed=N] [--sensitivity=N]",
+            "uso: indicator.py <socket de controle> [--speed=N] [--sensitivity=N] "
+            "[--shape=bar|wave]",
             file=sys.stderr,
         )
         return 2
-    return Indicator(socket_path, speed=speed, sensitivity=sensitivity).start()
+    return Indicator(socket_path, speed=speed, sensitivity=sensitivity, shape=shape).start()
 
 
 if __name__ == "__main__":

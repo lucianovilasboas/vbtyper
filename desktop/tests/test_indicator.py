@@ -134,6 +134,30 @@ def test_main_needs_the_socket(indicator):
     assert indicator.main(["--speed=2"]) == 2
 
 
+def test_fill_width_is_proportional_with_a_visible_minimum(indicator):
+    assert indicator.fill_width(0.0, 120, 12) == 0.0
+    assert indicator.fill_width(0.5, 120, 12) == 60.0
+    assert indicator.fill_width(1.0, 120, 12) == 120.0
+    # Num nível baixinho ainda aparece um traço visível, não um pixel.
+    assert indicator.fill_width(0.01, 120, 12) == 12.0
+    assert indicator.fill_width(2.0, 120, 12) == 120.0
+    assert indicator.fill_width(-1.0, 120, 12) == 0.0
+
+
+def test_level_ratio_applies_the_calibrated_curve(indicator):
+    # Sem Indicador instanciado (não abre janela), o cálculo é replicado aqui.
+    full, gamma = indicator.FULL_LEVEL, indicator.GAMMA
+    middle = (15.0 / full) ** gamma
+    assert 0.3 < middle < 0.9
+
+
+def test_shape_is_parsed_from_the_command_line(indicator):
+    assert indicator.SHAPES == ("bar", "wave")
+    # Sem socket não há como abrir janela; só garantimos que não explode.
+    assert indicator.main(["--shape=wave"]) == 2
+    assert indicator.main(["--shape=inventado"]) == 2
+
+
 def test_debug_is_inert_without_the_environment_variable(indicator):
     assert indicator.DEBUG_PATH in (None, "") or isinstance(indicator.DEBUG_PATH, str)
     indicator._debug("nada deve acontecer")  # não pode falhar nem escrever nada
