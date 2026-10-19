@@ -33,3 +33,15 @@ jobs:
           # Garante que nenhum teste dependa de uma chave real.
           OPENAI_API_KEY: ""
         run: uv run pytest -q
+      - name: Dependências do cliente desktop
+        working-directory: desktop
+        run: uv sync --extra dev
+      - name: Lint do cliente desktop
+        working-directory: desktop
+        run: uv run ruff check .
+      - name: Formatação do cliente desktop
+        working-directory: desktop
+        run: uv run ruff format --check .
+      - name: Testes do cliente desktop
+        working-directory: desktop
+        run: uv run pytest -q
