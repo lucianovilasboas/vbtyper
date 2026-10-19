@@ -1,0 +1,29 @@
+# Contexto do build: a raiz do repositório (a imagem precisa de `backend/` e
+# `web/`). Tudo que não entra na imagem fica fora — inclusive segredos.
+
+.git
+.gitignore
+.dockerignore
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/*.egg-info/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Não entram na imagem
+desktop/
+docs/
+deploy/
+backend/tests/
+web/node_modules/
+
+# Estado e segredos
+**/*.db
+**/*.db-journal
+audio/
+.env
+**/.env
+*.tar.gz

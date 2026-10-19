@@ -1,0 +1,43 @@
+# VB Typer 2.0 — API + interface web.
+#
+# Uso: cd deploy/docker && cp .env.example .env && docker compose up -d --build
+# Ver o README.md desta pasta para o acesso pela ZeroTier, backup e atualização.
+
+name: vb-typer
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: vb-typer-api:local
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    ports:
+      # Publica SOMENTE numa interface (padrão: loopback). Aponte
+      # VB_TYPER_BIND_ADDR para o endereço da ZeroTier no host. Nunca 0.0.0.0:
+      # ainda não há login, e quem alcança "/" recebe um cookie de sessão válido.
+      - "${VB_TYPER_BIND_ADDR:-127.0.0.1}:${VB_TYPER_BIND_PORT:-8765}:8765"
+
+    volumes:
+      # Banco (vb-typer.db) e áudios (audio/) — sem volume, cada "up" perde tudo.
+      - vb-typer-data:/data
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/v1/health', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  # Nome fixo para o volume não ganhar o prefixo do projeto (facilita o backup).
+  vb-typer-data:
+    name: vb-typer-data
