@@ -109,6 +109,12 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
     Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
     ali. `tray/tray_helper.py` é cópia fiel do 1.x e não é alterado.
+16. Ícones e marca são **gerados** por `scripts/build-icons.py` a partir de
+    `vb-typer.png` (raiz do repositório):
+    `desktop/assets/tray_*.png` (bandeja, uma cor por estado) e
+    `web/static/logo.png` + `favicon.png` (telas do app). Não edite esses PNG à
+    mão — rode o gerador. Depois de mexer em `web/`, reinicie o serviço: o
+    backend lê `index.html` uma vez, no start.
 
 ## Testes
 

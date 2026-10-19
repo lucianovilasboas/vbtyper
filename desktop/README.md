@@ -139,6 +139,22 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
 | `ui.py` | abre a interface no navegador (modo app quando possível) |
 | `platform/` | adaptadores por sistema; hoje só `linux_x11` |
 
+### Ícones
+
+Os ícones da bandeja (`assets/tray_*.png`) são a **marca do VB Typer** com a cor
+de cada estado, todos em 64×64: `tray_on` (ditado ativo, cores originais),
+`tray_rec` (lilás claro, o pulso da gravação), `tray_off` (vermelho, desativado),
+`tray_busy` e `tray_busy_alt` (laranja, transcrevendo).
+
+São **gerados** — não edite os PNG à mão:
+
+```bash
+cd desktop && uv run --with pillow python ../scripts/build-icons.py
+```
+
+O gerador lê a marca original em `vb-typer.png` (raiz do repositório) e também
+escreve o logo e o favicon usados pelas telas do app em `web/static/`.
+
 Os dois helpers GTK rodam no **Python do sistema**, porque o PyGObject não
 empacota bem no PyInstaller. O nome do socket é próprio (`vb-typer-desktop-…`)
 para nunca conflitar com o app 1.x, que continua rodando em paralelo.

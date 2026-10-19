@@ -38,3 +38,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Ferramentas (MCP do Playwright, etc.)
+.playwright-mcp/

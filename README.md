@@ -216,6 +216,8 @@ backend/
   tests/
 docs/             # arquitetura, API e migração
 web/              # cliente web (SPA sem build, servida pelo backend)
+scripts/          # gerador dos ícones (build-icons.py)
+vb-typer.png      # marca original, fonte dos ícones
 desktop/
   src/vb_typer_desktop/
     daemon.py     # atalho → gravação → job → inserção no cursor

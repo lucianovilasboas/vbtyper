@@ -66,13 +66,7 @@ h2 { font-size: 1rem; }
 .brand-mark {
   width: 38px;
   height: 38px;
-  border-radius: 11px;
-  background: var(--brand);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 1.1rem;
+  display: block;
 }
 
 .brand p { margin: 2px 0 0; font-size: 0.8rem; }

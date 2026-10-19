@@ -14,6 +14,13 @@ próprio backend na mesma origem. Abra <http://127.0.0.1:8765>.
 - `static/app.js` — fluxo: gravar → `POST /transcription-jobs` → acompanhar
   (`GET`) → copiar; além disso, histórico e estatísticas.
 - `static/style.css` — tema claro/escuro por `prefers-color-scheme`.
+- `static/logo.png` e `static/favicon.png` — a marca, usada no cabeçalho e como
+  ícone da aba. São **gerados** por `scripts/build-icons.py` a partir de
+  `vb-typer.png`; não edite os PNG à mão.
+
+> Depois de mexer em `index.html` ou nos assets, reinicie o serviço
+> (`systemctl --user restart vb-typer-api`): o backend lê a página uma vez, no
+> start.
 
 ## Autenticação
 
