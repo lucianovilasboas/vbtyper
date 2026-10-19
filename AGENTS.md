@@ -159,6 +159,9 @@ desbloqueado: `systemctl --user restart vb-typer-api` resolve.
 
 ## Estado atual
 
+O backlog combinado com o usuário vive em [`ROADMAP.md`](ROADMAP.md) — leia antes
+de propor trabalho novo.
+
 - Backend v1 completo (jobs, histórico, estatísticas, configurações, CSV,
   importador do 1.x) — 60 testes.
 - Cliente web (Ditar / Histórico / Atividade) servido na mesma origem.
