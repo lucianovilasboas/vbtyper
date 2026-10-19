@@ -5,15 +5,29 @@ próprio backend na mesma origem. Abra <http://127.0.0.1:8765>.
 
 ## Como funciona
 
-- `index.html` — estrutura das três telas: **Ditar**, **Histórico** e
-  **Atividade**.
+Quatro telas, na mesma página:
+
+- **Ditar** — grava pelo microfone do navegador e mostra o texto para revisar e
+  copiar. Os chips do topo mostram com qual modelo e idioma você está ditando.
+- **Atividade** — métricas do período, dois gráficos (volume e ritmo de fala),
+  mapa de consistência das últimas 13 semanas e uso por dia da semana.
+- **Histórico** — tabela com quando, áudio, palavras, **custo estimado** e o
+  texto de cada ditado; busca, exclusão e exportação em CSV.
+- **Configurações** — aparência (claro/escuro/automático), modelo, idioma, início
+  da semana, estado da credencial e teste de conexão.
+
+Arquivos:
+
+- `index.html` — a estrutura das quatro telas.
 - `static/api.js` — cliente fino da API v1 (`fetch` com `credentials:
   same-origin`).
 - `static/recorder.js` — envoltório do `MediaRecorder` (WebM/Opus no Chrome,
   Ogg/Opus no Firefox) que devolve um `Blob`.
-- `static/app.js` — fluxo: gravar → `POST /transcription-jobs` → acompanhar
-  (`GET`) → copiar; além disso, histórico e estatísticas.
-- `static/style.css` — tema claro/escuro por `prefers-color-scheme`.
+- `static/app.js` — fluxo de gravação, histórico, atividade e configurações.
+- `static/charts.js` — gráficos em SVG puro (sem biblioteca): barras, linha,
+  mapa de consistência e uso por dia da semana.
+- `static/style.css` — a paleta do 1.x (o roxo `#7839e8`) e os componentes. O
+  tema é escolhido em `data-theme` no `<html>`, com `auto` seguindo o sistema.
 - `static/logo.png` e `static/favicon.png` — a marca, usada no cabeçalho e como
   ícone da aba. São **gerados** por `scripts/build-icons.py` a partir de
   `vb-typer.png`; não edite os PNG à mão.

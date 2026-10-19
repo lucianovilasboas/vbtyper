@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
+from vb_typer.domain.pricing import cost_usd
 from vb_typer.schemas.common import IsoStamp, ORMModel
 
 
@@ -20,6 +21,12 @@ class TranscriptionRead(ORMModel):
     insert_ms: int
     inserted: bool
     error: str | None = None
+
+    @computed_field
+    @property
+    def cost_usd(self) -> float:
+        """Custo estimado deste ditado, pela tarifa do modelo usado."""
+        return round(cost_usd(self.model, self.duration_s), 6)
 
 
 class TranscriptionPage(BaseModel):

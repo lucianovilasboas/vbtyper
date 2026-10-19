@@ -6,16 +6,10 @@ from pathlib import Path
 
 from vb_typer.core.timeutil import local_stamp
 from vb_typer.db.models import Transcription
-from vb_typer.domain.enums import DEFAULT_PRICE_PER_MINUTE, PRICING_PER_MINUTE
 
 
 def words_of(text: str) -> int:
     return len((text or "").split())
-
-
-def cost_usd(model: str, duration_s: float) -> float:
-    rate = PRICING_PER_MINUTE.get(model, DEFAULT_PRICE_PER_MINUTE)
-    return max(0.0, float(duration_s)) / 60.0 * rate
 
 
 def new_transcription(

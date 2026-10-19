@@ -1,12 +1,17 @@
 import { api } from "./api.js";
 import { Recorder } from "./recorder.js";
+import { renderBars, renderHeatmap, renderLine, renderWeekdays } from "./charts.js";
 
 const $ = (id) => document.getElementById(id);
 
 const POLL_INTERVAL_MS = 700;
 const POLL_TIMEOUT_MS = 180_000;
-const HISTORY_PAGE = 20;
+const HISTORY_PAGE = 25;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
+const THEME_KEY = "vb-typer-theme";
+const HEATMAP_DAYS = 91;
+const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const WEEKDAY_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
 const number = new Intl.NumberFormat("pt-BR");
 const money = new Intl.NumberFormat("pt-BR", {
@@ -32,9 +37,58 @@ const state = {
   period: { days: 30, granularity: "day" },
   metric: "words",
   series: [],
+  settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
+  theme: localStorage.getItem(THEME_KEY) || "auto",
+  loaded: new Set(),
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// --- formatação -------------------------------------------------------------
+
+function formatCost(value) {
+  const amount = Number(value) || 0;
+  if (amount > 0 && amount < 0.0001) return `US$ ${amount.toFixed(6)}`;
+  return money.format(amount);
+}
+
+function humanSeconds(value) {
+  const seconds = Math.max(0, Number(value) || 0);
+  if (seconds < 60) return `${seconds.toFixed(1).replace(".", ",")} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  if (minutes < 60) return `${minutes} min ${String(rest).padStart(2, "0")} s`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
+}
+
+function humanMinutes(value) {
+  return `${(Number(value) || 0).toFixed(1).replace(".", ",")} min`;
+}
+
+function isoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+
+function fromIsoDate(text) {
+  const [year, month, day] = text.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/* "hoje, 18:44" · "ontem, 09:12" · "17/10, 18:44" — como no app 1.x. */
+function shortStamp(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const time = parsed.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const today = new Date();
+  const dayOf = (date) => isoDate(date);
+  if (dayOf(parsed) === dayOf(today)) return `hoje, ${time}`;
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (dayOf(parsed) === dayOf(yesterday)) return `ontem, ${time}`;
+  return `${parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}, ${time}`;
+}
 
 function setStatus(message, kind = "") {
   const node = $("status");
@@ -48,25 +102,23 @@ function setConnection(kind, text) {
   node.textContent = text;
 }
 
-function humanSeconds(value) {
-  const seconds = Math.max(0, Number(value) || 0);
-  if (seconds < 60) return `${seconds.toFixed(1).replace(".", ",")} s`;
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.round(seconds % 60);
-  if (minutes < 60) return `${minutes} min ${String(rest).padStart(2, "0")} s`;
-  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, "0")} min`;
+// --- tema -------------------------------------------------------------------
+
+function resolvedTheme(choice) {
+  if (choice !== "auto") return choice;
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function isoDate(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`;
-}
-
-function formatTimestamp(value) {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+function applyTheme(choice, { persist = true } = {}) {
+  state.theme = choice;
+  document.documentElement.dataset.theme = resolvedTheme(choice);
+  for (const button of document.querySelectorAll("[data-theme-choice]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice));
+  }
+  for (const button of document.querySelectorAll("[data-setting-theme]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.settingTheme === choice));
+  }
+  if (persist) localStorage.setItem(THEME_KEY, choice);
 }
 
 // --- gravação ---------------------------------------------------------------
@@ -173,12 +225,11 @@ async function submit(blob) {
   $("cancel").hidden = false;
   try {
     const job = await api.createJob(blob, {
-      model: $("model").value,
-      language: $("language").value.trim(),
+      model: state.settings.model,
+      language: state.settings.language,
     });
     state.jobId = job.id;
-    const finished = await pollJob(job.id);
-    handleJobResult(finished);
+    handleJobResult(await pollJob(job.id));
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -216,7 +267,13 @@ function handleJobResult(job) {
   updateWordCount();
   $("copy").disabled = !text.trim();
   setStatus("Transcrição pronta. Revise e copie onde quiser.", "ok");
-  loadHistory(true).catch(() => {});
+  if (result?.cost_usd) {
+    setStatus(
+      `Transcrição pronta · ${humanSeconds(result.duration_s)} · ${formatCost(result.cost_usd)}`,
+      "ok"
+    );
+  }
+  state.loaded.delete("history");
 }
 
 async function cancelCurrent() {
@@ -257,19 +314,28 @@ async function copyTranscript() {
   }
   setStatus("Texto copiado para a área de transferência.", "ok");
   if (state.transcriptId) {
-    const insertMs = Math.min(Math.round(performance.now() - state.resultShownAt), 3_600_000);
+    const insertMs = Math.min(
+      Math.round(performance.now() - state.resultShownAt),
+      3_600_000
+    );
     try {
       await api.patchTranscription(state.transcriptId, { inserted: true, insert_ms: insertMs });
     } catch {
-      /* o registro de inserção não é crítico */
+      /* registrar a inserção não é crítico */
     }
   }
 }
 
 // --- configurações ----------------------------------------------------------
 
+function renderSettingChips() {
+  $("chip-model").textContent = state.settings.model || "—";
+  $("chip-language").textContent = state.settings.language || "—";
+}
+
 async function loadSettings() {
   const settings = await api.getSettings();
+  state.settings = settings;
   const select = $("model");
   select.replaceChildren();
   for (const model of settings.allowed_models) {
@@ -280,89 +346,164 @@ async function loadSettings() {
   }
   select.value = settings.model;
   $("language").value = settings.language;
+  $("week-start").value = settings.week_start;
+  renderSettingChips();
+  renderKeyBadge(settings.api_key_configured);
+}
+
+function renderKeyBadge(configured) {
+  const badge = $("key-badge");
+  badge.dataset.state = configured ? "ok" : "warn";
+  badge.textContent = configured ? "Configurada" : "Ausente";
+  $("key-state").textContent = configured
+    ? ""
+    : "Nenhuma chave OpenAI configurada. Rode `vb-typer-api --setup` ou salve pelo app desktop.";
+}
+
+async function saveSetting(changes) {
+  try {
+    const updated = await api.patchSettings(changes);
+    state.settings = { ...state.settings, ...updated };
+    renderSettingChips();
+    state.loaded.delete("activity");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
 }
 
 let languageTimer = null;
 function scheduleLanguageSave() {
   if (languageTimer) window.clearTimeout(languageTimer);
   languageTimer = window.setTimeout(() => {
-    const language = $("language").value.trim();
-    if (language) api.patchSettings({ language }).catch(() => {});
+    const language = $("language").value.trim().toLowerCase();
+    if (language.length >= 2) saveSetting({ language });
   }, 600);
+}
+
+async function testConnection() {
+  const button = $("test-connection");
+  const output = $("test-result");
+  button.disabled = true;
+  output.textContent = "Testando…";
+  try {
+    const result = await api.testConnection();
+    output.innerHTML = `<span class="ok-text">${result.message}</span>`;
+  } catch (error) {
+    output.innerHTML = `<span class="bad-text">${error.message}</span>`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadAbout() {
+  try {
+    const [info, ready] = await Promise.all([api.info(), api.ready()]);
+    $("about-version").textContent = `${info.app} ${info.version}`;
+    $("about-paths").textContent = `Banco ${ready.database ? "ok" : "indisponível"} · ${
+      info.models.length
+    } modelo(s)`;
+  } catch {
+    $("about-version").textContent = "—";
+  }
 }
 
 // --- histórico --------------------------------------------------------------
 
-function renderItem(item) {
-  const row = document.createElement("li");
-  row.className = "item";
+function cell(className = "") {
+  const td = document.createElement("td");
+  if (className) td.className = className;
+  return td;
+}
 
-  const head = document.createElement("div");
-  head.className = "item-head";
+function historyRow(item) {
+  const row = document.createElement("tr");
 
-  const when = document.createElement("strong");
-  when.textContent = formatTimestamp(item.created_at);
-  head.append(when);
+  const when = cell("when");
+  when.textContent = shortStamp(item.created_at);
+  row.append(when);
 
-  const meta = document.createElement("span");
-  meta.className = "muted";
-  meta.textContent = `${item.model} · ${humanSeconds(item.duration_s)} · ${number.format(
-    item.words
-  )} palavras`;
-  head.append(meta);
+  const audio = cell("num");
+  audio.textContent = item.duration_s ? humanSeconds(item.duration_s) : "—";
+  row.append(audio);
 
-  const badge = document.createElement("span");
-  if (item.error) {
-    badge.className = "badge error";
-    badge.textContent = "erro";
-  } else if (item.inserted) {
+  const words = cell("num");
+  words.textContent = number.format(item.words);
+  row.append(words);
+
+  const cost = cell("num");
+  cost.textContent = formatCost(item.cost_usd);
+  cost.title = `tarifa de ${item.model}`;
+  row.append(cost);
+
+  const body = cell("text-cell");
+  const text = document.createElement("div");
+  text.className = item.error ? "empty-hint" : "text";
+  text.textContent = item.error || item.text || "(sem texto)";
+  body.append(text);
+  if (item.inserted) {
+    const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = "inserido";
+    body.append(badge);
   }
-  if (badge.textContent) head.append(badge);
-  row.append(head);
-
-  const body = document.createElement("p");
-  body.className = "item-body";
-  body.textContent = item.error ? item.error : item.text;
   row.append(body);
 
-  const actions = document.createElement("div");
-  actions.className = "item-actions";
+  const actions = cell();
+  const group = document.createElement("div");
+  group.className = "row-actions";
 
   const copy = document.createElement("button");
+  copy.type = "button";
   copy.textContent = "Copiar";
   copy.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(item.text);
       await api.patchTranscription(item.id, { inserted: true, insert_ms: 0 });
+      item.inserted = true;
       setStatus("Texto do histórico copiado.", "ok");
+      state.loaded.delete("history");
+      selectView("history");
     } catch (error) {
       setStatus(error.message, "error");
     }
   });
 
   const remove = document.createElement("button");
+  remove.type = "button";
   remove.textContent = "Excluir";
   remove.addEventListener("click", async () => {
     try {
       await api.deleteTranscription(item.id);
       row.remove();
-      setStatus("Registro excluído.", "ok");
+      setStatus("Ditado excluído do histórico.", "ok");
+      state.loaded.delete("activity");
+      state.loaded.delete("history");
     } catch (error) {
       setStatus(error.message, "error");
     }
   });
 
-  actions.append(copy, remove);
+  group.append(copy, remove);
+  actions.append(group);
   row.append(actions);
   return row;
+}
+
+async function loadHistorySummary() {
+  try {
+    const data = await api.stats({ granularity: "day" });
+    $("history-summary").textContent =
+      `${number.format(data.summary.total)} ditados · ${humanSeconds(data.summary.seconds)} de áudio` +
+      ` · ${number.format(data.summary.words)} palavras · ${formatCost(data.summary.cost_usd)} estimados`;
+  } catch {
+    $("history-summary").textContent = "—";
+  }
 }
 
 async function loadHistory(reset = false) {
   if (reset) {
     state.historyOffset = 0;
-    $("history-list").replaceChildren();
+    $("history-body").replaceChildren();
   }
   const page = await api.listTranscriptions({
     limit: HISTORY_PAGE,
@@ -370,8 +511,8 @@ async function loadHistory(reset = false) {
     q: state.search || undefined,
   });
   state.historyTotal = page.total;
-  const list = $("history-list");
-  for (const item of page.items) list.append(renderItem(item));
+  const body = $("history-body");
+  for (const item of page.items) body.append(historyRow(item));
   state.historyOffset += page.items.length;
   $("history-empty").hidden = state.historyOffset > 0;
   $("history-more").hidden = state.historyOffset >= state.historyTotal;
@@ -385,108 +526,189 @@ function metricValue(point) {
   return point.words;
 }
 
-function drawChart(series) {
-  const canvas = $("chart");
-  const ratio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth || 600;
-  const height = 200;
-  canvas.width = width * ratio;
-  canvas.height = height * ratio;
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  ctx.clearRect(0, 0, width, height);
+function metricFormat() {
+  if (state.metric === "minutes") return humanMinutes;
+  return (value) => number.format(Math.round(value));
+}
 
-  const styles = getComputedStyle(document.documentElement);
-  const brand = styles.getPropertyValue("--brand").trim() || "#4f46e5";
-  const muted = styles.getPropertyValue("--muted").trim() || "#6b7280";
-  const border = styles.getPropertyValue("--border").trim() || "#e3e6ef";
+function metricLabel() {
+  if (state.metric === "count") return "Ditados";
+  if (state.metric === "minutes") return "Tempo de áudio";
+  return "Palavras ditadas";
+}
 
-  const values = series.map(metricValue);
-  const max = Math.max(1, ...values);
-  const hasData = values.some((value) => value > 0);
-  const baseline = height - 26;
-  const slot = width / Math.max(1, series.length);
-  const barWidth = Math.max(2, Math.min(28, slot * 0.62));
+function drawVolume() {
+  const values = state.series.map(metricValue);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  $("chart1-title").textContent = metricLabel();
+  $("chart1-unit").textContent =
+    state.metric === "minutes"
+      ? humanMinutes(total)
+      : `${number.format(Math.round(total))} ${state.metric === "count" ? "ditados" : "palavras"}`;
+  renderBars(
+    $("volume-chart"),
+    values,
+    state.series.map((point) => point.label),
+    { format: metricFormat() }
+  );
+}
 
-  ctx.strokeStyle = border;
-  ctx.beginPath();
-  ctx.moveTo(0, baseline + 0.5);
-  ctx.lineTo(width, baseline + 0.5);
-  ctx.stroke();
+function drawPace() {
+  const pace = state.series.map((point) =>
+    point.seconds ? point.words / (point.seconds / 60) : 0
+  );
+  const peak = Math.max(0, ...pace);
+  $("pace-peak").textContent = peak
+    ? `pico do período: ${number.format(Math.round(peak))} palavras/min`
+    : "sem dados no período";
+  renderLine(
+    $("pace-chart"),
+    pace,
+    state.series.map((point) => point.label),
+    { format: (value) => number.format(Math.round(value)), unit: " palavras/min" }
+  );
+}
 
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.textAlign = "center";
+/* Últimos 91 dias, alinhados no início da semana, para as colunas fecharem. */
+function heatmapCells(days, weekStart) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (HEATMAP_DAYS - 1));
+  const wanted = weekStart === "sunday" ? 0 : 1;
+  while (start.getDay() !== wanted) start.setDate(start.getDate() - 1);
 
-  if (!hasData) {
-    ctx.fillStyle = muted;
-    ctx.fillText("Sem dados no período.", width / 2, baseline - 24);
+  const byDate = new Map(days.map((day) => [day.bucket, day]));
+  const cells = [];
+  for (const cursor = new Date(start); cursor <= new Date(); cursor.setDate(cursor.getDate() + 1)) {
+    const key = isoDate(cursor);
+    const day = byDate.get(key);
+    const count = day ? day.count : 0;
+    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
+    cells.push({
+      level,
+      tooltip: `${WEEKDAY_SHORT[cursor.getDay()]}, ${cursor.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      })}: ${count} ditado(s)`,
+      date: key,
+      count,
+    });
   }
+  return cells;
+}
 
-  // Rótulos: múltiplos do passo e o último apenas se não colidir com o anterior.
-  const step = Math.max(1, Math.ceil(series.length / 8));
-  const labelIndexes = new Set();
-  for (let index = 0; index < series.length; index += step) labelIndexes.add(index);
-  const lastIndex = series.length - 1;
-  if (lastIndex > 0 && lastIndex % step !== 0) {
-    const previous = lastIndex - (lastIndex % step);
-    if (lastIndex - previous >= step * 0.6) labelIndexes.add(lastIndex);
+function renderConsistency(days, weekStart) {
+  const cells = heatmapCells(days, weekStart);
+  renderHeatmap($("heatmap"), cells);
+
+  const active = cells.filter((entry) => entry.count > 0).length;
+  $("heat-active").textContent = number.format(active);
+  const best = cells.reduce((top, entry) => (entry.count > top.count ? entry : top), { count: 0 });
+  $("heat-best").textContent = best.count ? WEEKDAY_SHORT[fromIsoDate(best.date).getDay()] : "—";
+
+  const totals = new Map();
+  for (const entry of cells) {
+    const weekday = fromIsoDate(entry.date).getDay();
+    const current = totals.get(weekday) || { count: 0, words: 0, seconds: 0 };
+    current.count += entry.count;
+    current.words += (days.find((day) => day.bucket === entry.date) || {}).words || 0;
+    totals.set(weekday, current);
   }
+  const order = weekStart === "sunday" ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0];
+  const weekdays = order.map((weekday) => ({
+    label: WEEKDAY_SHORT[weekday],
+    count: (totals.get(weekday) || { count: 0 }).count,
+    words: (totals.get(weekday) || { words: 0 }).words,
+  }));
+  renderWeekdays($("weekday-chart"), weekdays);
+  const busiest = weekdays.reduce((top, day) => (day.count > top.count ? day : top), weekdays[0]);
+  $("weekday-peak").textContent = busiest.count
+    ? `mais uso: ${WEEKDAY_LONG[order[weekdays.indexOf(busiest)]]}`
+    : "sem dados no período";
+}
 
-  series.forEach((point, index) => {
-    const value = values[index];
-    const barHeight = (value / max) * (baseline - 14);
-    const x = index * slot + (slot - barWidth) / 2;
-    const y = baseline - barHeight;
-    if (value > 0) {
-      ctx.fillStyle = brand;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(x, y, barWidth, Math.max(2, barHeight), 3);
-      else ctx.rect(x, y, barWidth, Math.max(2, barHeight));
-      ctx.fill();
-    } else {
-      ctx.fillStyle = border;
-      ctx.fillRect(x, baseline - 1, barWidth, 1);
-    }
-    if (labelIndexes.has(index)) {
-      ctx.fillStyle = muted;
-      ctx.fillText(point.label, index * slot + slot / 2, height - 8);
-    }
-  });
+function renderInsights(data) {
+  const insights = data.insights;
+  const parts = [
+    `Ritmo médio: ${number.format(Math.round(insights.words_per_minute))} palavras/min`,
+    `duração média: ${humanSeconds(insights.average_duration)}`,
+    `pico às ${insights.peak_hour}`,
+    `p95 da API: ${number.format(insights.api_p95_ms)} ms`,
+    `falhas: ${number.format(data.summary.failures)}`,
+  ];
+  $("insights").textContent = parts.join(" · ");
+}
+
+function renderMetrics(data) {
+  const summary = data.summary;
+  const insights = data.insights;
+  $("m-audio").textContent = humanSeconds(summary.seconds);
+  $("m-audio-sub").textContent = `${number.format(Math.round(insights.average_duration))} s por ditado`;
+  $("m-words").textContent = number.format(summary.words);
+  $("m-words-sub").textContent = `${number.format(Math.round(insights.words_per_minute))} palavras/min`;
+  $("m-count").textContent = number.format(summary.total);
+  $("m-count-sub").textContent = summary.not_inserted
+    ? `${number.format(summary.not_inserted)} sem inserir`
+    : "todos inseridos";
+  $("m-cost").textContent = formatCost(summary.cost_usd);
+  $("m-cost-sub").textContent = summary.total
+    ? `${formatCost(summary.cost_usd / summary.total)} por ditado`
+    : "—";
 }
 
 async function loadActivity() {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - (state.period.days - 1));
-  const data = await api.stats({
-    from: isoDate(from),
-    to: isoDate(to),
-    granularity: state.period.granularity,
-  });
+  const heatFrom = new Date();
+  heatFrom.setDate(heatFrom.getDate() - (HEATMAP_DAYS - 1));
+
+  const [data, daily] = await Promise.all([
+    api.stats({ from: isoDate(from), to: isoDate(to), granularity: state.period.granularity }),
+    api.stats({ from: isoDate(heatFrom), to: isoDate(to), granularity: "day" }),
+  ]);
+
   state.series = data.series;
-  $("m-audio").textContent = humanSeconds(data.summary.seconds);
-  $("m-words").textContent = number.format(data.summary.words);
-  $("m-count").textContent = number.format(data.summary.total);
-  $("m-cost").textContent = money.format(data.summary.cost_usd);
-  drawChart(data.series);
-  const perMinute = data.insights.words_per_minute || 0;
-  const p95 = data.insights.api_p95_ms || 0;
-  $("insights").textContent =
-    `Ritmo médio: ${perMinute.toFixed(0)} palavras/min · Pico às ${data.insights.peak_hour}` +
-    ` · p95 da API: ${number.format(p95)} ms · falhas: ${number.format(data.summary.failures)}`;
+  $("period-caption").textContent = `nos últimos ${state.period.days} dias`;
+  renderMetrics(data);
+  drawVolume();
+  drawPace();
+  renderConsistency(daily.series, state.settings.week_start);
+  renderInsights(data);
 }
 
 // --- navegação --------------------------------------------------------------
 
 function selectView(name) {
-  for (const tab of document.querySelectorAll(".tab")) {
+  for (const tab of document.querySelectorAll(".nav button")) {
     tab.setAttribute("aria-selected", String(tab.dataset.view === name));
   }
   for (const view of document.querySelectorAll(".view")) {
-    view.hidden = view.id !== `view-${name}`;
+    view.classList.toggle("active", view.id === `view-${name}`);
   }
-  if (name === "history") loadHistory(true).catch((error) => setStatus(error.message, "error"));
-  if (name === "activity") loadActivity().catch((error) => setStatus(error.message, "error"));
+  const loaders = { history: loadHistoryTab, activity: loadActivityTab, settings: loadSettingsTab };
+  const loader = loaders[name];
+  if (loader) loader();
+}
+
+function loadHistoryTab() {
+  if (state.loaded.has("history")) return;
+  state.loaded.add("history");
+  loadHistorySummary().catch(() => {});
+  loadHistory(true).catch((error) => setStatus(error.message, "error"));
+}
+
+function loadActivityTab() {
+  if (state.loaded.has("activity")) return;
+  state.loaded.add("activity");
+  loadActivity().catch((error) => setStatus(error.message, "error"));
+}
+
+function loadSettingsTab() {
+  if (state.loaded.has("settings")) return;
+  state.loaded.add("settings");
+  loadSettings().catch((error) => setStatus(error.message, "error"));
+  loadAbout();
 }
 
 function bindEvents() {
@@ -503,22 +725,32 @@ function bindEvents() {
     $("copy").disabled = true;
   });
   $("transcript").addEventListener("input", updateWordCount);
-  $("model").addEventListener("change", () => {
-    api.patchSettings({ model: $("model").value }).catch((error) => setStatus(error.message, "error"));
-  });
-  $("language").addEventListener("input", scheduleLanguageSave);
+  $("go-settings").addEventListener("click", () => selectView("settings"));
 
-  for (const tab of document.querySelectorAll(".tab")) {
+  for (const tab of document.querySelectorAll(".nav button")) {
     tab.addEventListener("click", () => selectView(tab.dataset.view));
   }
+
+  for (const button of document.querySelectorAll("[data-theme-choice]")) {
+    button.addEventListener("click", () => applyTheme(button.dataset.themeChoice));
+  }
+  for (const button of document.querySelectorAll("[data-setting-theme]")) {
+    button.addEventListener("click", () => applyTheme(button.dataset.settingTheme));
+  }
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (state.theme === "auto") applyTheme("auto", { persist: false });
+  });
 
   let searchTimer = null;
   $("search").addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => {
       state.search = $("search").value.trim();
-      const link = $("export-csv");
-      link.href = `/api/v1/transcriptions/export.csv${state.search ? `?q=${encodeURIComponent(state.search)}` : ""}`;
+      const filtered = `/api/v1/transcriptions/export.csv${
+        state.search ? `?q=${encodeURIComponent(state.search)}` : ""
+      }`;
+      $("export-csv-filtered").hidden = !state.search;
+      $("export-csv-filtered").href = filtered;
       loadHistory(true).catch((error) => setStatus(error.message, "error"));
     }, 300);
   });
@@ -530,7 +762,7 @@ function bindEvents() {
     const button = event.target.closest("button");
     if (!button) return;
     for (const sibling of $("activity-periods").children) {
-      sibling.classList.toggle("selected", sibling === button);
+      sibling.setAttribute("aria-pressed", String(sibling === button));
     }
     state.period = { days: Number(button.dataset.days), granularity: button.dataset.granularity };
     loadActivity().catch((error) => setStatus(error.message, "error"));
@@ -540,40 +772,62 @@ function bindEvents() {
     const button = event.target.closest("button");
     if (!button) return;
     for (const sibling of $("activity-metrics").children) {
-      sibling.classList.toggle("selected", sibling === button);
+      sibling.setAttribute("aria-pressed", String(sibling === button));
     }
     state.metric = button.dataset.metric;
-    drawChart(state.series);
+    drawVolume();
   });
 
-  window.addEventListener("resize", () => drawChart(state.series));
+  $("model").addEventListener("change", () => saveSetting({ model: $("model").value }));
+  $("language").addEventListener("input", scheduleLanguageSave);
+  $("week-start").addEventListener("change", async () => {
+    await saveSetting({ week_start: $("week-start").value });
+    state.loaded.delete("activity");
+  });
+  $("test-connection").addEventListener("click", testConnection);
+
+  for (const item of document.querySelectorAll(".side-item")) {
+    item.addEventListener("click", () => {
+      for (const sibling of document.querySelectorAll(".side-item")) {
+        sibling.setAttribute("aria-current", String(sibling === item));
+      }
+      const section = $(item.dataset.section);
+      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 }
 
 async function init() {
+  applyTheme(state.theme, { persist: false });
   bindEvents();
+
   if (!Recorder.supported) {
     $("record").disabled = true;
-    setStatus("Este navegador não oferece gravação de áudio. Use uma versão recente do Firefox ou Chrome.", "error");
+    setStatus(
+      "Este navegador não oferece gravação de áudio. Use uma versão recente do Firefox ou Chrome.",
+      "error"
+    );
   }
+
   try {
     const ready = await api.ready();
     setConnection(
       ready.api_key_configured ? "ok" : "warn",
       ready.api_key_configured ? "Chave configurada" : "Sem chave OpenAI"
     );
-    $("key-state").textContent = ready.api_key_configured
-      ? ""
-      : "Nenhuma chave configurada. Rode `vb-typer-api --setup` ou salve no app desktop.";
+    renderKeyBadge(ready.api_key_configured);
   } catch {
     setConnection("error", "Backend indisponível");
     setStatus("Não consegui falar com o backend.", "error");
   }
+
   try {
+    // Carrega os valores efetivos para os chips da tela Ditar; a tela de
+    // configurações recarrega e completa com o "Sobre" quando for aberta.
     await loadSettings();
   } catch (error) {
     setStatus(error.message, "error");
   }
-  loadHistory(true).catch(() => {});
 }
 
 init();

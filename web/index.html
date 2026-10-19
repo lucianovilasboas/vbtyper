@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8,38 +8,51 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    // Aplica o tema escolhido antes da primeira pintura, para não piscar.
+    (() => {
+      const choice = localStorage.getItem("vb-typer-theme") || "auto";
+      const dark = choice === "dark"
+        || (choice === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <img class="brand-mark" src="/static/logo.png" alt="" width="38" height="38">
-      <div>
-        <h1>VB Typer</h1>
-        <p class="muted" id="subtitle">Fale. Transcreva. Cole.</p>
-      </div>
+      <img src="/static/logo.png" alt="">
+      <span>VB Typer</span>
     </div>
-    <div class="status-pill" id="connection" data-state="warn">Verificando…</div>
+    <nav class="nav" aria-label="Navegação principal">
+      <button data-view="dictate" aria-selected="true">Ditar</button>
+      <button data-view="activity" aria-selected="false">Atividade</button>
+      <button data-view="history" aria-selected="false">Histórico</button>
+      <button data-view="settings" aria-selected="false">Configurações</button>
+    </nav>
+    <div class="rightbar">
+      <div class="theme-switch" role="group" aria-label="Tema">
+        <button data-theme-choice="auto" title="Automático (segue o sistema)">Auto</button>
+        <button data-theme-choice="light" title="Claro">☼</button>
+        <button data-theme-choice="dark" title="Escuro">◐</button>
+      </div>
+      <div class="pill" id="connection" data-state="warn">Verificando…</div>
+    </div>
   </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab" role="tab" data-view="dictate" aria-selected="true">Ditar</button>
-    <button class="tab" role="tab" data-view="history" aria-selected="false">Histórico</button>
-    <button class="tab" role="tab" data-view="activity" aria-selected="false">Atividade</button>
-  </nav>
-
-  <main>
-    <!-- Ditar ------------------------------------------------------------ -->
-    <section class="view" id="view-dictate">
+  <main class="app">
+    <!-- Ditar -------------------------------------------------------------- -->
+    <section class="view active" id="view-dictate">
       <div class="card options">
-        <label>
-          <span>Modelo</span>
-          <select id="model"></select>
-        </label>
-        <label>
-          <span>Idioma</span>
-          <input id="language" type="text" maxlength="16" placeholder="pt" autocomplete="off">
-        </label>
-        <span class="muted tiny" id="key-state"></span>
+        <div>
+          <span class="kicker">Ditando com</span>
+          <div class="hotkey">
+            <span class="key" id="chip-model">—</span>
+            <span class="key" id="chip-language">—</span>
+            <button class="ghost small" id="go-settings" type="button">Ajustar</button>
+          </div>
+          <p class="theme-help" id="key-state"></p>
+        </div>
       </div>
 
       <div class="card record-card">
@@ -63,58 +76,204 @@
         <div class="actions">
           <button id="copy" class="primary" disabled>Copiar texto</button>
           <button id="clear" class="ghost">Limpar</button>
+          <span class="theme-help">Copiar marca o ditado como <strong>inserido</strong>.</span>
         </div>
       </div>
     </section>
 
-    <!-- Histórico -------------------------------------------------------- -->
-    <section class="view" id="view-history" hidden>
-      <div class="card">
-        <div class="card-head">
-          <h2>Histórico</h2>
-          <input id="search" class="search" type="search" placeholder="Buscar no texto…">
+    <!-- Atividade ---------------------------------------------------------- -->
+    <section class="view" id="view-activity">
+      <div class="metrics">
+        <div class="metric"><span>Áudio ditado</span><strong id="m-audio">—</strong><small id="m-audio-sub"></small></div>
+        <div class="metric"><span>Palavras</span><strong id="m-words">—</strong><small id="m-words-sub"></small></div>
+        <div class="metric"><span>Ditados</span><strong id="m-count">—</strong><small id="m-count-sub"></small></div>
+        <div class="metric"><span>Custo estimado</span><strong id="m-cost">—</strong><small id="m-cost-sub"></small></div>
+      </div>
+
+      <div class="section-head">
+        <div class="section-title">Tendências <small id="period-caption"></small></div>
+        <div class="period" id="activity-periods" role="group" aria-label="Período">
+          <button data-days="7" data-granularity="day" aria-pressed="false">7 dias</button>
+          <button data-days="30" data-granularity="day" aria-pressed="true">30 dias</button>
+          <button data-days="90" data-granularity="day" aria-pressed="false">90 dias</button>
+          <button data-days="180" data-granularity="month" aria-pressed="false">6 meses</button>
+          <button data-days="365" data-granularity="month" aria-pressed="false">1 ano</button>
         </div>
-        <ul class="list" id="history-list"></ul>
+      </div>
+
+      <div class="chart-grid">
+        <article class="chart-card">
+          <div class="chart-head">
+            <strong id="chart1-title">Palavras ditadas</strong>
+            <span id="chart1-unit">—</span>
+          </div>
+          <svg class="chart" id="volume-chart" viewBox="0 0 780 205" preserveAspectRatio="none"
+               role="img" aria-label="Transcrições por período"></svg>
+          <div class="filters" id="activity-metrics" role="group" aria-label="Métrica">
+            <button data-metric="words" aria-pressed="true">Palavras</button>
+            <button data-metric="count" aria-pressed="false">Ditados</button>
+            <button data-metric="minutes" aria-pressed="false">Minutos de áudio</button>
+          </div>
+        </article>
+        <article class="chart-card">
+          <div class="chart-head">
+            <strong>Ritmo de fala</strong>
+            <span id="pace-peak">—</span>
+          </div>
+          <svg class="chart" id="pace-chart" viewBox="0 0 780 205" preserveAspectRatio="none"
+               role="img" aria-label="Palavras por minuto"></svg>
+          <div class="no-data-note">Palavras transcritas ÷ duração do áudio, no período escolhido.</div>
+        </article>
+      </div>
+
+      <div class="lower-grid">
+        <article class="lower-card">
+          <div class="lower-head"><strong>Consistência</strong><span>ditados por dia · últimas 13 semanas</span></div>
+          <div class="heat-area">
+            <div class="heatmap" id="heatmap" role="img" aria-label="Mapa de uso diário"></div>
+            <div class="heat-stats">
+              <div><strong id="heat-active">—</strong><span>dias com atividade</span></div>
+              <div><strong id="heat-best">—</strong><span>dia com mais ditados</span></div>
+            </div>
+          </div>
+        </article>
+        <article class="lower-card">
+          <div class="lower-head"><strong>Seu uso na semana</strong><span id="weekday-peak">—</span></div>
+          <div class="weekday-chart" id="weekday-chart"></div>
+        </article>
+      </div>
+
+      <div class="notice">
+        <span class="accent-dot"></span>
+        <span id="insights">Dados do histórico local. O custo é estimativa pelas tarifas públicas da OpenAI.</span>
+      </div>
+    </section>
+
+    <!-- Histórico ---------------------------------------------------------- -->
+    <section class="view" id="view-history">
+      <div class="section-head">
+        <div class="section-title">Histórico <small>ditados recentes</small></div>
+        <input id="search" class="search" type="search" placeholder="Buscar no texto…" autocomplete="off">
+      </div>
+      <div class="lower-card">
+        <div class="kicker" id="history-summary">—</div>
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Quando</th>
+              <th>Áudio</th>
+              <th>Palavras</th>
+              <th>Custo</th>
+              <th>Transcrição</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
         <p class="muted small" id="history-empty" hidden>Nenhum ditado registrado ainda.</p>
         <div class="actions">
           <button id="history-more" class="ghost" hidden>Carregar mais</button>
           <a class="ghost as-link" id="export-csv" href="/api/v1/transcriptions/export.csv" download>Exportar CSV</a>
+          <a class="ghost as-link" href="/api/v1/transcriptions/export.csv" id="export-csv-filtered" download hidden>Exportar busca atual</a>
         </div>
       </div>
     </section>
 
-    <!-- Atividade -------------------------------------------------------- -->
-    <section class="view" id="view-activity" hidden>
-      <div class="card">
-        <div class="card-head">
-          <h2>Resumo</h2>
-          <div class="filters" id="activity-periods">
-            <button data-days="7" data-granularity="day">7 dias</button>
-            <button data-days="30" data-granularity="day" class="selected">30 dias</button>
-            <button data-days="90" data-granularity="day">90 dias</button>
-            <button data-days="180" data-granularity="month">6 meses</button>
-            <button data-days="365" data-granularity="month">1 ano</button>
+    <!-- Configurações ------------------------------------------------------ -->
+    <section class="view" id="view-settings">
+      <div class="settings-layout">
+        <aside class="side" aria-label="Seções">
+          <button class="side-item" data-section="s-general" aria-current="true">◉ &nbsp;Geral</button>
+          <button class="side-item" data-section="s-dictation" aria-current="false">♩ &nbsp;Ditado</button>
+          <button class="side-item" data-section="s-credential" aria-current="false">⌘ &nbsp;Credencial</button>
+          <button class="side-item" data-section="s-about" aria-current="false">ⓘ &nbsp;Sobre</button>
+        </aside>
+
+        <div class="settings-main">
+          <h2 id="s-general">Geral</h2>
+          <div class="settings-card">
+            <div class="setting-row">
+              <div>Aparência<span>Segue o sistema ou fica fixa. Vale só para este navegador.</span></div>
+            </div>
+            <div class="theme-options">
+              <button class="theme-option" data-setting-theme="auto" aria-pressed="false">
+                <div class="theme-preview"><div class="mini-nav"></div><div class="mini-box"><i></i><i></i></div></div>
+                <span class="theme-caption">Automático</span>
+              </button>
+              <button class="theme-option" data-setting-theme="light" aria-pressed="false">
+                <div class="theme-preview"><div class="mini-nav"></div><div class="mini-box"><i></i><i></i></div></div>
+                <span class="theme-caption">Claro</span>
+              </button>
+              <button class="theme-option" data-setting-theme="dark" aria-pressed="false">
+                <div class="theme-preview"><div class="mini-nav"></div><div class="mini-box"><i></i><i></i></div></div>
+                <span class="theme-caption">Escuro</span>
+              </button>
+            </div>
+          </div>
+
+          <h2 id="s-dictation">Ditado</h2>
+          <div class="settings-card">
+            <div class="field-row">
+              <div>Modelo de transcrição<span>Usado nos próximos ditados — aqui e no cliente desktop.</span></div>
+              <select id="model"></select>
+            </div>
+            <div class="field-row">
+              <div>Idioma<span>Código de duas letras, como <code>pt</code> ou <code>en</code>.</span></div>
+              <input id="language" type="text" maxlength="16" placeholder="pt" autocomplete="off">
+            </div>
+            <div class="field-row">
+              <div>Início da semana<span>Como as semanas são agrupadas no histórico e nas estatísticas.</span></div>
+              <select id="week-start">
+                <option value="monday">Segunda-feira</option>
+                <option value="sunday">Domingo</option>
+              </select>
+            </div>
+            <div class="field-row">
+              <div>Atalho do cliente desktop<span>Segurar para gravar, soltar para transcrever e inserir no cursor.</span></div>
+              <div class="hotkey">
+                <span class="key">Ctrl</span><span class="muted">+</span><span class="key">Super</span>
+              </div>
+            </div>
+            <p class="theme-help">
+              O ditado por atalho é do cliente desktop. Esta tela grava pelo microfone do navegador.
+            </p>
+          </div>
+
+          <h2 id="s-credential">Credencial</h2>
+          <div class="settings-card">
+            <div class="field-row">
+              <div>Chave da OpenAI<span>A chave vive no cofre do sistema e nunca chega ao navegador.</span></div>
+              <span id="key-badge" class="pill">—</span>
+            </div>
+            <div class="field-row">
+              <div>Conexão<span id="test-result">Teste se a chave responde (não gasta áudio).</span></div>
+              <button id="test-connection" class="ghost">Testar conexão</button>
+            </div>
+          </div>
+
+          <h2 id="s-about">Sobre</h2>
+          <div class="settings-card">
+            <div class="field-row">
+              <div>API<span id="about-version">—</span></div>
+            </div>
+            <div class="field-row">
+              <div>Banco e modelos<span id="about-paths">—</span></div>
+            </div>
+            <div class="field-row">
+              <div>Documentação<span><a href="/docs" target="_blank" rel="noreferrer">/docs</a> — contrato OpenAPI da API local</span></div>
+            </div>
+            <p class="theme-help">
+              Local e privado: o áudio vai para a OpenAI pela API do backend; a chave nunca chega ao navegador.
+            </p>
           </div>
         </div>
-        <div class="metrics">
-          <div class="metric"><span class="muted">Áudio ditado</span><strong id="m-audio">—</strong></div>
-          <div class="metric"><span class="muted">Palavras</span><strong id="m-words">—</strong></div>
-          <div class="metric"><span class="muted">Ditados</span><strong id="m-count">—</strong></div>
-          <div class="metric"><span class="muted">Custo estimado</span><strong id="m-cost">—</strong></div>
-        </div>
-        <div class="filters" id="activity-metrics">
-          <button data-metric="words" class="selected">Palavras</button>
-          <button data-metric="count">Ditados</button>
-          <button data-metric="minutes">Minutos de áudio</button>
-        </div>
-        <canvas id="chart" height="200"></canvas>
-        <p class="muted small" id="insights"></p>
       </div>
     </section>
   </main>
 
-  <footer class="foot muted tiny">
-    Local e privado: o áudio vai para a OpenAI pela API do backend; a chave nunca chega ao navegador.
+  <footer class="foot">
+    <span>VB Typer — ditado por voz com API local</span>
+    <span>Histórico, áudios e credencial ficam na sua máquina</span>
   </footer>
 
   <script type="module" src="/static/app.js"></script>

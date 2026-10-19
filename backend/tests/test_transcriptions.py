@@ -77,5 +77,29 @@ async def test_csv_export_uses_bom_and_semicolon(client, auth, container):
     text = response.content.decode("utf-8-sig")
     lines = text.strip().splitlines()
     assert lines[0].startswith("id;created_at;text")
+    assert "cost_usd" in lines[0].split(";")
     assert len(lines) == 3
     assert "ditado numero 0" in text
+
+
+async def test_cost_per_entry_uses_the_model_rate(client, auth, container):
+    """O custo do ditado sai na própria linha, para contabilizar no histórico."""
+    ids = _seed(container, 1)  # 10 s com gpt-4o-mini-transcribe (US$ 0,003/min)
+    response = await client.get(f"/api/v1/transcriptions/{ids[0]}", headers=auth)
+    body = response.json()
+    assert body["cost_usd"] == round(10.0 / 60.0 * 0.003, 6)
+
+    listing = await client.get("/api/v1/transcriptions", headers=auth)
+    assert listing.json()["items"][0]["cost_usd"] == body["cost_usd"]
+
+
+async def test_cost_per_entry_survives_an_unknown_model(client, auth, container):
+    """Modelo fora da tabela cai na tarifa padrão, sem quebrar a listagem."""
+    row = container.history.record(
+        text="modelo estranho",
+        duration_s=60.0,
+        model="modelo-que-nao-existe",
+        language="pt",
+    )
+    response = await client.get(f"/api/v1/transcriptions/{row.id}", headers=auth)
+    assert response.json()["cost_usd"] > 0

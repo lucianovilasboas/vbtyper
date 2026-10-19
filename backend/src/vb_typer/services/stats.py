@@ -12,7 +12,7 @@ from vb_typer.core.config import AppSettings
 from vb_typer.core.timeutil import local_stamp, normalize_bound, parse_local_stamp
 from vb_typer.db.models import Transcription
 from vb_typer.domain.enums import Granularity
-from vb_typer.services.common import cost_usd
+from vb_typer.domain.pricing import cost_usd
 
 MAX_BUCKETS = 5000
 

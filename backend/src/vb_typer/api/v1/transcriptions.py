@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query, Response, status
 from vb_typer.api.deps import ContainerDep
 from vb_typer.core.timeutil import iso_stamp, normalize_bound
 from vb_typer.db.models import Transcription
+from vb_typer.domain.pricing import cost_usd
 from vb_typer.schemas.transcriptions import (
     TranscriptionInsertPatch,
     TranscriptionPage,
@@ -28,6 +29,7 @@ CSV_HEADER = [
     "audio_bytes",
     "model",
     "language",
+    "cost_usd",
     "transcribe_ms",
     "insert_ms",
     "inserted",
@@ -102,6 +104,7 @@ def export_csv(
                 row.audio_bytes,
                 row.model,
                 row.language,
+                f"{cost_usd(row.model, row.duration_s):.6f}",
                 row.transcribe_ms,
                 row.insert_ms,
                 1 if row.inserted else 0,
