@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 19/10/2026 — tudo em `v0.5.1` (backend: 88 testes; desktop:
+Última atualização: 19/10/2026 — tudo em `v0.6.0` (backend: 92 testes; desktop:
 169 testes).
 
 ---
@@ -292,3 +292,83 @@ Avisos: no Windows a tecla "Super" é a tecla Windows (risco de menu Iniciar /
 - Retorno do indicador recalibrado em `v0.4.1` (passou de exponencial para
   linear). Se ainda parecer lento no uso, `speed` no `desktop.json` — nada de
   código.
+
+---
+
+## 6. Serviço multiusuário (SaaS): contêiner, contas e login
+
+**Decisão (19/10):** o projeto é **multiusuário** — a intenção é servir como SaaS
+no futuro. Ordem combinada com o Luciano: **contêiner primeiro**; as demais
+decisões depois.
+
+### Etapa 1 — contêiner: **feito em `v0.6.0`**
+
+`deploy/docker/` traz `Dockerfile`, `docker-compose.yml`, `.env.example` e
+`README.md`; o `.dockerignore` (raiz) define o contexto, que precisa ser a raiz
+para levar `backend/` e `web/`. **Um contêiner só serve API e webapp**: a API já
+entrega o `index.html` e os estáticos na mesma origem, então não há proxy interno
+nem build de front. O cliente desktop **não** é empacotado — precisa de X11,
+microfone e do cursor local.
+
+Verificado na máquina: build, `healthy`, webapp na raiz, `/api/v1/ready`, token
+exigido (401), `Host` estranho (400), `Origin` permitida (200) e estranha (403), e
+um ditado de ponta a ponta (job → worker → áudio no volume → falha limpa com
+chave falsa, sem cobrança). Roda como usuário **não-root** (uid 10001), com os
+dados em `0600`/`0700`.
+
+**Decisão de exposição: ZeroTier.** Enquanto não houver login, a porta é
+publicada apenas na interface ZeroTier (`VB_TYPER_BIND_ADDR`) — nunca `0.0.0.0`,
+porque **quem alcança `/` recebe um cookie de sessão válido**.
+
+**Defeito corrigido no caminho:** `VB_TYPER_ALLOWED_HOSTS`, `CORS_ORIGINS`,
+`ALLOWED_MODELS` e `ALLOWED_CONTENT_TYPES` **não** funcionavam por ambiente — o
+`pydantic-settings` tentava decodificar o valor como JSON **antes** do validador
+`_split_csv`, e o processo morria no start. Resolvido com `NoDecode` (o formato
+JSON continua aceito) e coberto por `tests/test_config.py`. Sem isso, o contêiner
+não subiria configurado.
+
+**Pendências para a exposição pública** (quando o login existir): desligar
+`/docs` e `/api/v1/openapi.json` por configuração (hoje são públicos e fixos no
+código); `Secure` no cookie de sessão sob TLS; limite de tentativas de acesso.
+Melhoria sugerida: aceitar como origem o próprio `Host` quando ele passar em
+`allowed_hosts` — hoje o endereço precisa ser repetido em `CORS_ORIGINS`, senão o
+webapp leva 403 ao ditar.
+
+### Etapa 2 — identidade e separação por conta
+
+É a fundação do SaaS, e vai **junto com o login**: fazer a autenticação antes das
+colunas de dono seria refazer consultas, armazenamento e testes depois.
+
+| Peça | Hoje | Vira |
+|---|---|---|
+| `transcriptions` | tabela única | dono por linha |
+| `jobs` | idem | dono por linha |
+| `app_settings` | linha única `id=1` | uma por conta |
+| áudios | `audio/AAAA/MM/…` | `audio/<conta>/AAAA/MM/…` |
+| consultas a filtrar | — | **11 pontos** (`repositories/jobs` 2, `repositories/transcriptions` 4, `services/stats` 5) **+ todas as inserções** |
+| autenticação | um token único em arquivo | sessões por pessoa + tokens por dispositivo |
+| tabelas novas | — | `account`, `sessions`, `api_tokens` |
+
+**Quem paga a OpenAI** é a pergunta que define o produto: um usuário que dite 2 h
+por dia custa **~US$ 11/mês** só de transcrição (US$ 0,003/min), mais o ajuste do
+modo inteligente. Plataforma pagando ⇒ **cotas obrigatórias desde o primeiro dia**
+(por conta: minutos/mês, requisições/min, teto de custo); chave por conta (BYOK) ⇒
+onboarding pior, mas sem risco financeiro, com a chave **cifrada em repouso**.
+
+**Decisões em aberto (Luciano):**
+1. quem paga a OpenAI — plataforma (com cotas) ou chave por conta (BYOK)?
+2. cadastro **aberto** (exige email transacional: verificação e reset) ou **por
+   convite** (conta criada por comando, **sem dependência de email**)?
+3. um endereço só, ou **subdomínio por conta** (muda cookie de sessão,
+   certificado wildcard e `allowed_hosts`)?
+4. **senha** (com `hashlib.scrypt`, sem dependência nova) ou **código por email**?
+
+**Privacidade (LGPD):** ditado guarda **o que a pessoa fala**. Mínimo antes do
+primeiro usuário de fora: consentimento, exclusão a pedido, prazo de retenção,
+cifra em repouso (hoje os áudios ficam em claro no volume) e política escrita.
+Afeta o esquema (expurgo por conta), então é mais barato decidir agora.
+
+**Escala:** SQLite com o worker no mesmo processo = **uma réplica** e fila global
+— um ditado longo atrasa os demais. Serve as primeiras dezenas de contas; não
+construir em cima de "escala réplicas". Os repositórios já isolam o SQL, o que
+facilita migrar para Postgres depois.
