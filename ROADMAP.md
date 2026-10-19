@@ -3,8 +3,8 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 18/10/2026 — tudo em `v0.4.1` (backend: 63 testes; desktop:
-163 testes).
+Última atualização: 19/10/2026 — tudo em `v0.5.1` (backend: 88 testes; desktop:
+169 testes).
 
 ---
 
@@ -40,9 +40,77 @@ escolhe (tela de Configurações ou campo `mode` no job). O que foi implementado
 - a dica curta de formatação (`prompt`) só vai na transcrição quando o modo é
   smart — no literal nada enviesa o reconhecimento.
 
-Falta desta parte: mostrar o **texto reconhecido** lado a lado no histórico (hoje
-tem um "ver o texto reconhecido") e o mesmo modo no cliente desktop — este já lê
-a configuração e envia o modo, então está pronto.
+O cliente desktop também já lê a configuração e envia o modo, e a **bandeja**
+ganhou os itens *Modo literal* / *Modo inteligente* (`v0.5.1`) — com o vigente
+marcado no rótulo (itens de rádio foram descartados: ver a armadilha anotada no
+`AGENTS.md`).
+
+### Pendente — escolher o modelo do ajuste e ver o custo de cada etapa
+
+**Pedido (Luciano, 19/10):** "só a possibilidade de poder configurar o modelo na
+tela de configuração e de ver os custos separados quando o modelo for usado. E é
+claro que o modelo só deve ser usado em caso de extrema necessidade para
+economizar. E na hora de mostrar lá no histórico, deixar claro o valor de cada
+etapa separada, pelo menos a estimativa, para eu ter esse controle dos gastos."
+
+Nada disso muda o comportamento do ditado: é **controle de gasto**.
+
+**O que existe hoje (verificado no código):**
+
+- o ajuste usa `smart_model` da configuração (`core/config.py`, padrão
+  `gpt-4o-mini`), e ele **não** está em `/api/v1/settings` — nem na leitura nem
+  na escrita. Não há como trocar pela interface;
+- o adaptador **ignora o campo `usage`** da resposta do chat: o custo do ajuste
+  não é medido nem registrado. O "custo estimado" do histórico e da Atividade
+  conta **só a transcrição**.
+
+**Por que isso importa** (números de referência para uma fala de 20 s, ~60
+palavras; tarifas públicas, sujeitas a mudança — conferir na implementação):
+
+| Etapa | Custo |
+|---|---|
+| Transcrição (`gpt-4o-mini-transcribe`, US$ 0,003/min) | US$ 0,0010 |
+| Ajuste com `gpt-4o-mini` (~80 tokens entrada + ~85 saída) | US$ 0,00006 (≈6%) |
+| Ajuste com `gpt-4o` (US$ 2,50/M entrada, US$ 10/M saída) | US$ 0,0011 (**≈ o ditado inteiro**) |
+
+Numa fala curta (5 s) o ajuste com um modelo caro passa de 100% do custo da
+transcrição. Escolher o modelo no escuro é escolher o gasto no escuro.
+
+**Parte 1 — modelo do ajuste selecionável**
+
+- `app_settings.smart_model` (migração), com `allowed_smart_models` na
+  configuração, no padrão do `model`/`allowed_models` que já existe;
+- `/settings` passa a **expor** `smart_model` e a lista, e a **aceitar** a troca
+  (validada);
+- **correção embutida:** hoje o worker lê o modelo do ajuste do *ambiente*, não
+  da configuração — o mesmo defeito já corrigido no modo. Resolver na origem (o
+  job resolve a escolha vigente);
+- na tela de Configurações, um combo com o modelo **e o preço ao lado** de cada
+  opção, deixando claro que só afeta o modo inteligente;
+- o cliente desktop não muda: quem aplica o modelo é o backend.
+
+**Parte 2 — custo de cada etapa, separado**
+
+- ler o `usage` da resposta do ajuste e guardar por ditado os tokens e o custo
+  real (`adjust_cost_usd`), com a tabela de texto em `domain/pricing.py`, ao lado
+  da de áudio;
+- **histórico:** a coluna CUSTO com o total, e a conta aberta no bloco de detalhes
+  que já existe nas linhas inteligentes — "transcrição US$ 0,0010 + ajuste
+  US$ 0,0001 (123 tokens)";
+- **Atividade:** o "custo estimado" passa a somar os ajustes, com a linha de apoio
+  dizendo a parcela;
+- **CSV:** as duas colunas de custo, para contabilidade.
+
+**Gastar só quando necessário**
+
+A heurística de pulo já existe (`services/normalize.py`): prosa sem número, data,
+valor ou sigla não gasta a segunda chamada. Ao implementar isto, vale revisar se o
+gatilho deve ficar **ainda mais restrito** — o pedido é usar o ajuste só em caso
+de necessidade real.
+
+**Decisões em aberto:** quais modelos oferecer (proposta: `gpt-4o-mini` como
+padrão e `gpt-4o` como opção); duas colunas de custo ou total + detalhe; se a
+parcela do ajuste entra no custo estimado da Atividade.
 
 ### Estruturado: pendente, e é o que falta decidir
 
@@ -81,21 +149,18 @@ ao fluxo de inserção no cursor. Vale confirmar isso com o Luciano.
 
 ### O que a API da OpenAI permite
 
-Hoje o backend faz **uma** chamada: `POST /audio/transcriptions` com `model` e
-`language` (`backend/src/vb_typer/adapters/openai.py`). Não usa `prompt`, e não
-há nenhuma capacidade de chat implementada.
-
-- O endpoint de transcrição **não aceita esquema JSON** (`response_format` só
-  tem `text`/`json`/`srt`/`verbose_json`/`vtt`). Logo o modo Estruturado exige
-  **duas etapas**: transcrever e depois chamar `/chat/completions` com
+- O endpoint de transcrição **não aceita esquema JSON** (`response_format` só tem
+  `text`/`json`/`srt`/`verbose_json`/`vtt`). Logo o modo Estruturado exige **duas
+  etapas**: transcrever e depois chamar `/chat/completions` com
   `response_format: json_schema` (Structured Outputs).
-- **Inteligente** tem dois caminhos:
-  - `prompt` na própria transcrição: **grátis e sem latência extra**, mas é um
-    viés de estilo, não garantia;
-  - segunda chamada de chat com instruções de normalização: confiável, custa
-    ~0,5–2 s de latência e frações de centavo.
-- Os dois modos novos, portanto, adicionam **uma segunda chamada** — e latência
-  perceptível num ditado por push-to-talk. Decisão do Luciano.
+- O adaptador (`adapters/openai.py`) hoje faz transcrição (com `prompt`
+  opcional), chat (`/chat/completions`, usado pelo ajuste) e a verificação de
+  credencial (`/models`), com **conexão reaproveitada** entre chamadas.
+- **Inteligente** usa os dois caminhos: o `prompt` curto na própria transcrição
+  (grátis) **e** a segunda chamada com as instruções completas — que custa
+  ~0,5–2 s de latência. É por isso que ela é pulada quando não há o que
+  converter.
+- *(feito em `v0.5.0`)*
 
 ### Onde encaixa no código atual
 
@@ -103,15 +168,17 @@ Pipeline de hoje: `POST /api/v1/transcription-jobs` →
 `services/transcription.py::create_job` → `workers/manager.py::_process` chama
 `openai.transcribe` → `finish_success(texto)`.
 
-| Peça | Mudança |
-|---|---|
-| `db/models.py` → `jobs` | coluna `mode` (+ o esquema escolhido) |
-| `db/models.py` → `transcriptions` | `mode`, `raw_text` (o cru da ASR) e `structured_json` |
-| migração Alembic | nova versão em `db/migrations/versions/` |
-| `adapters/openai.py` | nova capacidade de chat (hoje só transcrição e `/models`) |
-| API v1 | `mode` no `POST` de jobs; modo padrão em `/api/v1/settings` |
-| web | seletor de modo na tela **Ditar**; JSON na tela; selo do modo no Histórico |
-| cliente desktop | só literal/inteligente, herdando o padrão de `/settings` (ele **já** lê modelo e idioma a cada ditado) |
+| Peça | Mudança | Estado |
+|---|---|---|
+| `db/models.py` → `jobs` | coluna `mode` | **feito** |
+| `db/models.py` → `transcriptions` | `mode` e `raw_text` | **feito** |
+| `db/models.py` → `transcriptions` | `structured_json` | falta (Estruturado) |
+| migração Alembic | `0002_modes` | **feito** |
+| `adapters/openai.py` | transcrição com `prompt`, chat e conexão reaproveitada | **feito** |
+| API v1 | `mode` no `POST` de jobs; modo padrão em `/api/v1/settings` | **feito** |
+| web | seletor nas Configurações, chip na tela Ditar, selo no Histórico | **feito** |
+| cliente desktop | herda modelo, idioma e modo de `/settings` | **feito** |
+| web | tela para ver, copiar e baixar o JSON | falta (Estruturado) |
 
 **Guardar o texto cru sempre** (`raw_text`) é o que permite auditar, comparar e
 desfazer: se o modo inteligente errar um valor, o original continua no histórico.
@@ -125,31 +192,25 @@ desfazer: se o modo inteligente errar um valor, o original continua no históric
    suportados). O backend precisa **validar e normalizar** o que o usuário
    mandar, senão a chamada quebra.
 
-### Fases propostas
+### Fases
 
-1. **Backend — literal + inteligente.** Coluna `mode`, `raw_text`, migração, a
-   segunda chamada e o *fallback*. Testes com `respx` cobrindo os dois modos, a
-   falha da segunda chamada e o cancelamento (que precisa valer para as duas
-   etapas).
-   *Aceite:* ditado literal idêntico ao de hoje; ditado inteligente normaliza
-   datas/números; com a API de chat fora do ar, sai o literal e o motivo
-   registrado.
-2. **Web UI.** Seletor de modo na tela Ditar e selo do modo no Histórico.
+1. ~~Backend — literal + inteligente~~ (**feito**, `v0.5.0`), com os testes: os
+   dois modos, o pulo por heurística, a falha do ajuste e o modo inválido.
+2. ~~Web UI e cliente desktop~~ (**feito**): seletor nas Configurações, chip na
+   tela Ditar, selo no Histórico e o modo enviado em cada ditado.
 3. **Estruturado.** Esquemas **nomeados** (ex.: "despesa", "reunião", "tarefa"),
    validador/normalizador de esquema, o JSON na tela (bonito, copiar, baixar) e
    no histórico, exportação em CSV.
-4. **Cliente desktop.** Herdar o modo padrão (literal/inteligente) e reportar no
-   `PATCH` de inserção.
 
 ### Perguntas em aberto (para o Luciano)
 
-1. **Inteligente:** segunda chamada (confiável, +0,5–2 s) ou começar só com o
-   `prompt` grátis? Recomendação: segunda chamada, com o `prompt` junto.
-2. **Estruturado:** confirma que **não** vai para o cursor? O esquema é **colado
+1. **Estruturado:** confirma que **não** vai para o cursor? O esquema é **colado
    como JSON** ou montado por um **construtor de campos** (nome/tipo/descrição)?
-3. **Falha na segunda chamada:** entregar o literal (recomendado) ou falhar o job?
-4. **Modelo da segunda chamada:** hoje o backend só autoriza modelos de
-   transcrição; será preciso uma nova configuração (`gpt-4o-mini`?).
+2. **Modelo do ajuste e custo das etapas:** as decisões estão na subseção
+   "Pendente — escolher o modelo do ajuste e ver o custo de cada etapa".
+
+*(Respondidas e implementadas: segunda chamada com o `prompt` junto; falha do
+ajuste entrega o literal.)*
 
 ---
 
