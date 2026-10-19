@@ -157,6 +157,10 @@ class ApiClient:
             payload["insert_ms"] = insert_ms
         self._request("PATCH", f"/api/v1/transcriptions/{transcription_id}", json=payload)
 
+    def patch_settings(self, changes: dict) -> dict:
+        """Altera configurações no backend (usado pela bandeja para trocar o modo)."""
+        return self._request("PATCH", "/api/v1/settings", json=changes).json()
+
     def current_options(self) -> tuple[str, str, str]:
         """Modelo, idioma e modo escolhidos na interface.
 

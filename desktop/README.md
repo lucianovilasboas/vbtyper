@@ -18,7 +18,12 @@ uv run vb-typer-desktop --write-preferences   # cria o arquivo de preferências
 
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
 inserir. A bandeja mostra o estado (desativado, ativo, gravando, transcrevendo) e
-oferece *Abrir configurações*, *Iniciar/Parar ditado* e *Sair*.
+oferece *Abrir configurações*, *Iniciar/Parar ditado*, o **modo de transcrição**
+(*Modo literal* / *Modo inteligente*) e *Sair*.
+
+O modo escolhido pela bandeja é gravado no backend, o mesmo lugar onde a
+interface o edita — e a bandeja relê a configuração de tempos em tempos, então
+uma troca feita na tela aparece no menu sozinha.
 
 Antes de usar, a API precisa estar no ar e com a chave configurada:
 

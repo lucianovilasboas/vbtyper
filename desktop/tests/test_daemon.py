@@ -438,3 +438,52 @@ def test_focus_loss_flashes_the_error(make_wav, tmp_path):
     snapshot = agent.state_snapshot()
     assert snapshot["phase"] == "error"
     assert "foco mudou" in snapshot["message"]
+
+
+# --------------------------------------------------------------------- modo
+
+
+def test_snapshot_reports_the_current_mode():
+    agent, _ = build()
+    assert agent.state_snapshot()["mode"] == "literal"
+
+    agent.mode_current = "smart"
+    assert agent.state_snapshot()["mode"] == "smart"
+
+
+def test_tray_can_switch_the_mode_and_it_goes_to_the_backend():
+    """A troca pela bandeja grava no backend: é lá que a escolha mora."""
+    api = FakeApi()
+    api.patched = []
+    api.patch_settings = lambda changes: api.patched.append(changes) or {"mode": changes["mode"]}
+    agent, _ = build(api=api)
+
+    assert agent.control_command("mode", "smart") == {"ok": True}
+    assert api.patched == [{"mode": "smart"}]
+    assert agent.current_mode == "smart"
+    assert agent.state_snapshot()["mode"] == "smart"
+
+
+def test_unknown_mode_is_refused_without_calling_the_backend():
+    api = FakeApi()
+    api.patched = []
+    api.patch_settings = lambda changes: api.patched.append(changes) or {"mode": "x"}
+    agent, _ = build(api=api)
+
+    assert agent.control_command("mode", "esperto") == {"ok": False}
+    assert api.patched == []
+
+
+def test_a_backend_failure_keeps_the_previous_mode():
+    from vb_typer_desktop.api import ApiError
+
+    def explode(changes):
+        raise ApiError("API fora do ar")
+
+    api = FakeApi()
+    api.patch_settings = explode
+    agent, notifications = build(api=api)
+
+    assert agent.control_command("mode", "smart") == {"ok": False}
+    assert agent.current_mode == "literal"
+    assert any(urgency == "critical" for _, _, urgency in notifications)

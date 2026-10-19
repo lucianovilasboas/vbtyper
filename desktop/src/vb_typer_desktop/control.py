@@ -72,7 +72,8 @@ class ControlServer:
                     connection.settimeout(1.5)
                     raw = connection.recv(1024).decode("utf-8", "replace").strip()
                     request = json.loads(raw or "{}")
-                    reply = self.handler(str(request.get("cmd", "")))
+                    # O valor é opcional: clientes antigos mandam só o comando.
+                    reply = self.handler(str(request.get("cmd", "")), request.get("value"))
                 except (OSError, ValueError):
                     reply = {"ok": False}
                 with contextlib.suppress(OSError):

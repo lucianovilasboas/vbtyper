@@ -66,6 +66,21 @@ class Tray:
         self.toggle_item.show()
         self.menu.append(self.toggle_item)
 
+        # --- acrescentado no 2.0: troca do modo de transcrição pela bandeja ---
+        # Itens simples, com o modo vigente marcado no próprio rótulo. Itens de
+        # rádio foram descartados: o host do AppIndicator constrói o menu no
+        # primeiro uso e ativava um item sozinho, trocando o modo sem clique.
+        self.menu.append(self.Gtk.SeparatorMenuItem())
+        self.mode_items = {}
+        for value, label in (("literal", "Modo literal"), ("smart", "Modo inteligente")):
+            item = self.Gtk.MenuItem(label=label)
+            item.connect("activate", lambda *_, v=value: self._choose_mode(v))
+            item.show()
+            self.menu.append(item)
+            self.mode_items[value] = item
+        self.shown_mode = ""
+        # ---------------------------------------------------------------------
+
         self.menu.append(self.Gtk.SeparatorMenuItem())
         quit_item = self.Gtk.MenuItem(label="Sair")
         quit_item.connect("activate", lambda *_: self.send("quit"))
@@ -81,12 +96,15 @@ class Tray:
         candidate = self.assets / f"{name}.png"
         return str(candidate) if candidate.exists() else ICON_FALLBACK
 
-    def send(self, command: str) -> dict:
+    def send(self, command: str, value: str | None = None) -> dict:
         try:
+            payload = {"cmd": command}
+            if value is not None:
+                payload["value"] = value
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
                 client.settimeout(1.5)
                 client.connect(self.socket_path)
-                client.sendall((json.dumps({"cmd": command}) + "\n").encode())
+                client.sendall((json.dumps(payload) + "\n").encode())
                 data = client.recv(4096)
             return json.loads(data.decode() or "{}")
         except (OSError, ValueError):
@@ -125,7 +143,21 @@ class Tray:
             self.last_state = marker
             self.indicator.set_icon_full(self.icon_path(icon), tooltip)
             self.toggle_item.set_label("Parar ditado" if dictating else "Iniciar ditado")
+        self._sync_mode(str(state.get("mode") or "literal"))
         return True
+
+    def _sync_mode(self, mode: str) -> None:
+        """Marca no menu o modo vigente (pode ter sido trocado pela interface)."""
+        if mode == self.shown_mode:
+            return
+        self.shown_mode = mode
+        for value, item in self.mode_items.items():
+            base = "Modo literal" if value == "literal" else "Modo inteligente"
+            item.set_label(f"{base} ✓" if value == mode else base)
+
+    def _choose_mode(self, value: str) -> None:
+        """Clique do usuário no item de modo."""
+        self.send("mode", value)
 
 
 def main() -> int:

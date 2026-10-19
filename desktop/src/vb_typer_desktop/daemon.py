@@ -25,6 +25,10 @@ from vb_typer_desktop.ui import open_ui
 
 POLL_INTERVAL_S = 0.3
 JOB_TIMEOUT_S = 180.0
+# De quanto em quanto tempo relemos a configuração, para a bandeja ficar em
+# sincronia com o que for mudado na interface.
+OPTIONS_REFRESH_S = 10.0
+MODES = ("literal", "smart")
 INSERTED_FLASH_S = 1.2
 ERROR_FLASH_S = 3.0
 INDICATOR_REFRESH_S = 0.25
@@ -60,6 +64,7 @@ class Daemon:
         self.poll_interval = poll_interval
         self.job_timeout = job_timeout
         self.mode = mode
+        self.mode_current = ""
         self.state = HotkeyState()
         self.lock = threading.RLock()
         self.busy = False
@@ -79,6 +84,11 @@ class Daemon:
         self._indicator_cache: tuple[float, str, Rect | None] = (0.0, "idle", None)
 
     # ------------------------------------------------------------------ estado
+
+    @property
+    def current_mode(self) -> str:
+        """Modo de transcrição vigente (o literal é o padrão)."""
+        return self.mode_current or self.mode or "literal"
 
     @property
     def listening(self) -> bool:
@@ -150,6 +160,7 @@ class Daemon:
             "hidden": False,
             "phase": phase,
             "level": self.recorder.level if self.recorder is not None else 0,
+            "mode": self.current_mode,
         }
         if phase in ("inserted", "error") and self._flash_message:
             snapshot["message"] = self._flash_message
@@ -184,10 +195,40 @@ class Daemon:
         self.state = HotkeyState()
         self.watcher = self.platform.hotkey_watcher(self.on_modifier)
         self.watcher.start()
+        self._start_options_watcher()
         self._notify(
             "VB Typer ativo",
             "Segure Ctrl+Super para gravar; solte Ctrl ou Super para transcrever e inserir.",
         )
+
+    def _start_options_watcher(self) -> None:
+        """Lê a configuração de tempos em tempos, para a bandeja não ficar velha."""
+        if getattr(self, "_options_thread", None) is not None:
+            return
+        thread = threading.Thread(target=self._watch_options, name="vb-typer-options", daemon=True)
+        self._options_thread = thread
+        thread.start()
+
+    def _watch_options(self) -> None:
+        while not self.done.is_set():
+            model, language, mode = self.api.current_options()
+            if mode:
+                self.mode_current = mode
+            self.model = model or self.model
+            self.language = language or self.language
+            self.done.wait(OPTIONS_REFRESH_S)
+
+    def set_mode(self, value: str) -> bool:
+        """Troca o modo de transcrição no backend (é ele que guarda a escolha)."""
+        if value not in MODES:
+            return False
+        try:
+            payload = self.api.patch_settings({"mode": value})
+        except ApiError as exc:
+            self._notify("VB Typer — erro", str(exc), "critical")
+            return False
+        self.mode_current = str(payload.get("mode") or value)
+        return True
 
     def stop_listener(self) -> None:
         """Pausa o ditado: cancela o trabalho em curso e descarta o áudio local."""
@@ -370,10 +411,12 @@ class Daemon:
 
     # -------------------------------------------------------------- ciclo de vida
 
-    def control_command(self, command: str) -> dict:
+    def control_command(self, command: str, value: str | None = None) -> dict:
         """Comandos da bandeja; nunca bloqueiam a thread do socket."""
         if command == "state":
             return self.state_snapshot()
+        if command == "mode":
+            return {"ok": self.set_mode(value or "")}
         actions = {"show": self.show_ui, "toggle": self.toggle_listener, "quit": self.shutdown}
         action = actions.get(command)
         if action is None:

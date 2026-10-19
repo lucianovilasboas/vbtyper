@@ -109,7 +109,12 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
 15. O indicador e a bandeja são helpers GTK3 em **processo separado**, no Python
     do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
     Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
-    ali. `tray/tray_helper.py` é cópia fiel do 1.x e não é alterado.
+    ali. `tray/tray_helper.py` veio do 1.x e mantém a estrutura original; a única
+    adição do 2.0 está marcada no arquivo (os itens de **modo de transcrição**),
+    com o resto intocado. **Não use `RadioMenuItem`/`CheckMenuItem` nesse menu:**
+    o host do AppIndicator constrói o menu no primeiro uso e ativava um item
+    sozinho, trocando o modo sem clique. Os itens de modo são simples, com o
+    vigente marcado no próprio rótulo.
 16. O modo de transcrição é `literal` por **padrão** — o modo `smart` só entra
     quando o usuário escolhe (em `/api/v1/settings` ou no campo `mode` do job).
     No modo smart, o texto reconhecido é guardado em `transcriptions.raw_text` e
