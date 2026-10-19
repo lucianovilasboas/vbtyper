@@ -44,6 +44,28 @@ VB_TYPER_CORS_ORIGINS=http://10.147.20.5:8765
 cabeçalho `Host`, a segunda o `Origin`. Esquecer a segunda faz o webapp
 responder **403 `invalid_origin`** ao ditar, mesmo com a página abrindo.
 
+### Segredo fora do repositório
+
+`VB_TYPER_ENV_FILE` aponta o `env_file` do compose para outro caminho — útil para
+manter a chave fora do checkout (ex.: `/etc/vb-typer/env`, com `0600`):
+
+```ini
+# no .env, ao lado deste compose
+VB_TYPER_ENV_FILE=/etc/vb-typer/env
+```
+
+Duas diferenças que custam tempo:
+
+- o **`.env` do projeto** alimenta só a **interpolação** (`${VB_TYPER_BIND_PORT}`,
+  `${VB_TYPER_ENV_FILE}`); o **`env_file`** alimenta o **ambiente do contêiner**.
+  Porta no env file não muda a publicação da porta, e vice-versa;
+- em disco onde `chmod` não vale (NTFS montado, por exemplo) **todo arquivo é
+  `0777`**: segredo ali é segredo exposto. Use o `VB_TYPER_ENV_FILE` e deixe o
+  arquivo num sistema de arquivos de verdade.
+
+E um aviso: `docker compose config` mostra o resultado final **com os segredos em
+claro**. Não rode em terminal compartilhado nem cole a saída em lugar nenhum.
+
 ## Operação
 
 ```bash

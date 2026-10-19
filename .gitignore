@@ -29,6 +29,9 @@ coverage.xml
 backend/.env
 .env
 
+# Overrides locais do Compose (rede/porta/env file específicos do host)
+docker-compose.override.yml
+
 # Editores e sistema
 .vscode/
 .idea/

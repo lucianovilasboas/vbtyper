@@ -14,7 +14,10 @@ services:
     restart: unless-stopped
 
     env_file:
-      - .env
+      # Padrão: o `.env` ao lado deste arquivo. `VB_TYPER_ENV_FILE` permite
+      # manter o arquivo de segredos fora do repositório (ex.: /etc/vb-typer/env)
+      # — necessário em disco onde chmod não vale (NTFS, por exemplo).
+      - "${VB_TYPER_ENV_FILE:-.env}"
 
     ports:
       # Publica SOMENTE numa interface (padrão: loopback). Aponte
