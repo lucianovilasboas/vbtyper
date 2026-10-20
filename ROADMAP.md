@@ -339,6 +339,12 @@ a honrar `VB_TYPER_COOKIE_SECURE` atrás de TLS. Verificado com o domínio real:
 `Host` e `Origin` aceitos, cookie `Secure`, 401 sem token, nenhuma porta no host.
 O Basic Auth sai quando a etapa 2 (contas) entrar.
 
+**Fuso do contêiner (`v0.8.1`).** O processo nasce em UTC no contêiner e, como o
+banco guarda horário local (invariante 7), o histórico saía 3 h à frente. O compose
+passou a definir `TZ` (`VB_TYPER_TZ`, padrão `America/Sao_Paulo`); as 28 linhas
+gravadas antes da correção (14 transcrições e 14 jobs) foram ajustadas em −3 h,
+com backup do banco antes.
+
 **Defeito corrigido no caminho:** `VB_TYPER_ALLOWED_HOSTS`, `CORS_ORIGINS`,
 `ALLOWED_MODELS` e `ALLOWED_CONTENT_TYPES` **não** funcionavam por ambiente — o
 `pydantic-settings` tentava decodificar o valor como JSON **antes** do validador
