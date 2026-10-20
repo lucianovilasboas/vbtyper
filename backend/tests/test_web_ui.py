@@ -19,6 +19,12 @@ def web_dir(tmp_path):
     (root / "static").mkdir(parents=True)
     (root / "index.html").write_text("<!doctype html><title>VB Typer</title>", encoding="utf-8")
     (root / "static" / "app.js").write_text("console.log('ok')", encoding="utf-8")
+    (root / "static" / "sw.js").write_text(
+        "self.addEventListener('fetch', () => {});", encoding="utf-8"
+    )
+    (root / "static" / "manifest.webmanifest").write_text(
+        '{"name": "VB Typer", "start_url": "/"}', encoding="utf-8"
+    )
     return root
 
 
@@ -84,3 +90,19 @@ async def test_cookie_authenticates_api_requests(web_client):
 async def test_api_still_requires_credentials_without_cookie(web_client):
     response = await web_client.get("/api/v1/settings")
     assert response.status_code == 401
+
+
+async def test_service_worker_is_served_from_the_root(web_client):
+    """O worker mora em /sw.js para controlar a origem inteira (não só /static)."""
+    response = await web_client.get("/sw.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/javascript")
+    assert "no-cache" in response.headers["cache-control"]
+    assert "addEventListener" in response.text
+
+
+async def test_manifest_is_served_with_the_right_type(web_client):
+    response = await web_client.get("/manifest.webmanifest")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    assert response.json()["name"] == "VB Typer"

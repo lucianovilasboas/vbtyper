@@ -94,6 +94,22 @@ def main() -> int:
     mark.resize((128, 128), Image.LANCZOS).save(WEB_DIR / "logo.png")
     mark.resize((32, 32), Image.LANCZOS).save(WEB_DIR / "favicon.png")
     print("web/static/logo.png (128x128) e web/static/favicon.png (32x32)")
+
+    # PWA: "any" para a tela inicial e "maskable" para o Android, que recorta
+    # até ~20% das bordas — por isso a marca ocupa menos espaço nesse último.
+    background = (250, 250, 253, 255)  # --bg do tema claro
+    for size in (192, 512):
+        icon = Image.new("RGBA", (size, size), background)
+        inner = mark.resize((int(size * 0.86),) * 2, Image.LANCZOS)
+        icon.paste(inner, ((size - inner.width) // 2,) * 2, inner)
+        icon.save(WEB_DIR / f"icon-{size}.png")
+        print(f"web/static/icon-{size}.png ({size}x{size})")
+
+    maskable = Image.new("RGBA", (512, 512), background)
+    inner = mark.resize((int(512 * 0.72),) * 2, Image.LANCZOS)
+    maskable.paste(inner, ((512 - inner.width) // 2,) * 2, inner)
+    maskable.save(WEB_DIR / "icon-maskable-512.png")
+    print("web/static/icon-maskable-512.png (512x512, zona segura do Android)")
     return 0
 
 

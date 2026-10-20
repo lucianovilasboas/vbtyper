@@ -285,6 +285,26 @@ details.raw p { margin: 6px 0 0; }
 
 .record-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 22px; }
 .wave { width: min(100%, 520px); height: 96px; display: block; }
+/* Convite para instalar o PWA. `[hidden]` precisa ser explícito: a regra de
+   display abaixo venceria a do navegador. */
+.install {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.install[hidden] { display: none; }
+.install-text { display: flex; flex-direction: column; gap: 2px; }
+.install-text strong { font-size: 0.95rem; }
+.install-text span { color: var(--muted); font-size: 0.85rem; }
+.install-actions { display: flex; gap: 8px; align-items: center; }
 .record {
   width: 84px;
   height: 84px;

@@ -794,6 +794,67 @@ function startAutoRefresh() {
   });
 }
 
+// --- PWA (instalação) -------------------------------------------------------
+
+const INSTALL_DISMISSED_KEY = "vb-typer-install-dismissed";
+
+function hideInstall() {
+  const banner = $("install-banner");
+  if (banner) banner.hidden = true;
+}
+
+function setupPwa() {
+  if ("serviceWorker" in navigator) {
+    // Só em contexto seguro (https ou localhost) o navegador registra o worker.
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    });
+  }
+
+  const banner = $("install-banner");
+  const confirm = $("install-confirm");
+  const dismiss = $("install-dismiss");
+  const help = $("install-help");
+  if (!banner || !confirm || !dismiss) return;
+
+  const dismissed = () => localStorage.getItem(INSTALL_DISMISSED_KEY) === "1";
+  let promptEvent = null;
+
+  dismiss.addEventListener("click", () => {
+    localStorage.setItem(INSTALL_DISMISSED_KEY, "1");
+    hideInstall();
+  });
+
+  confirm.addEventListener("click", async () => {
+    if (!promptEvent) return;
+    promptEvent.prompt();
+    const choice = await promptEvent.userChoice;
+    promptEvent = null;
+    if (choice.outcome === "accepted") hideInstall();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    localStorage.setItem(INSTALL_DISMISSED_KEY, "1");
+    hideInstall();
+  });
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    promptEvent = event;
+    if (!dismissed()) banner.hidden = false;
+  });
+
+  // O iOS não emite `beforeinstallprompt`: lá o caminho é o menu Compartilhar.
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (ios && !standalone && !dismissed()) {
+    confirm.hidden = true;
+    help.textContent = "No Safari: Compartilhar → Adicionar à Tela de Início.";
+    banner.hidden = false;
+  }
+}
+
 function bindEvents() {
   $("record").addEventListener("click", () => {
     if (recorder.recording) {
@@ -891,6 +952,7 @@ function bindEvents() {
 async function init() {
   applyTheme(state.theme, { persist: false });
   bindEvents();
+  setupPwa();
 
   // A aba escolhida sobrevive à recarga; sem escolha anterior, começa em Ditar.
   selectView(localStorage.getItem(VIEW_KEY) || "dictate");
