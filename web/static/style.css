@@ -284,7 +284,10 @@ details.raw p { margin: 6px 0 0; }
 .options select, .options input { border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 9px 11px; min-width: 190px; }
 
 .record-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 22px; }
-.wave { width: min(100%, 520px); height: 120px; display: block; }
+.wave { width: min(100%, 520px); height: 96px; display: block; }
+/* O botão Cancelar só existe enquanto grava/processa. Reservar a altura da
+   linha mantém o cartão do microfone do mesmo tamanho em todos os estados. */
+.record-card .actions { min-height: 40px; margin-top: 0; }
 .record {
   width: 84px;
   height: 84px;

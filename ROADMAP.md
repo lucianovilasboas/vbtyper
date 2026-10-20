@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 19/10/2026 — tudo em `v0.7.0` (backend: 98 testes; desktop:
+Última atualização: 19/10/2026 — tudo em `v0.7.1` (backend: 98 testes; desktop:
 169 testes).
 
 ---

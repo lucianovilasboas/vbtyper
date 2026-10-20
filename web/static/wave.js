@@ -29,7 +29,9 @@ function drawIdleWave({ ctx, width, height, time = 0 }) {
   ctx.clearRect(0, 0, width, height);
 
   const centerY = height / 2;
-  const amplitude = 18;
+  // O demo foi desenhado para 120 px de altura. A amplitude acompanha o canvas
+  // para a onda não ser cortada quando ele é menor, mantendo a proporção.
+  const amplitude = (18 * height) / 120;
   const frequency = 0.02;
   const gradient = createWaveGradient(ctx, width);
 
