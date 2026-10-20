@@ -48,7 +48,12 @@ services:
       # A API vem antes: o cliente desktop manda `Authorization: Bearer`, que
       # não pode ser consumido pelo Basic Auth do Traefik. Aqui quem protege é
       # o token do próprio app.
-      - "traefik.http.routers.vbtyper-api.rule=Host(`${VB_TYPER_DOMAIN:?defina em .env}`) && PathPrefix(`/api`)"
+      #
+      # `/static`, `/sw.js` e o manifest também ficam fora do Basic: são código
+      # e ícones públicos, e o navegador busca o service worker e o manifest
+      # sem a credencial em alguns caminhos (o registro falhava com 401). A
+      # fronteira real continua sendo `/`, que é quem entrega o cookie.
+      - "traefik.http.routers.vbtyper-api.rule=Host(`${VB_TYPER_DOMAIN:?defina em .env}`) && (PathPrefix(`/api`) || PathPrefix(`/static`) || Path(`/sw.js`) || Path(`/manifest.webmanifest`))"
       - "traefik.http.routers.vbtyper-api.entrypoints=websecure"
       - "traefik.http.routers.vbtyper-api.tls.certresolver=letsencrypt"
       - "traefik.http.routers.vbtyper-api.priority=20"

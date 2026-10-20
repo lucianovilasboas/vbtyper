@@ -353,6 +353,12 @@ textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transp
   .metric { border-right: 0; border-bottom: 1px solid var(--line); }
   .metric:last-child { border-bottom: 0; }
 
+  /* Cabeçalhos com seletor de período e filtros: sem quebra, os botões
+     estouravam a largura do celular. */
+  .section-head { flex-wrap: wrap; gap: 10px; }
+  .period,
+  .filters { flex-wrap: wrap; }
+
   /* Histórico: a tabela de 6 colunas vira lista de cartões, para o conteúdo
      numérico não estourar a largura do celular. */
   .history-table,
