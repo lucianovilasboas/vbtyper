@@ -30,6 +30,10 @@ services:
     image: vb-typer-api:latest
     restart: unless-stopped
     logging: *default-logging
+    environment:
+      # Invariante 7: o banco guarda horário local. O processo nasce em UTC no
+      # container, então o fuso precisa ser declarado aqui.
+      TZ: "${VB_TYPER_TZ:-America/Sao_Paulo}"
     env_file:
       - .env
     volumes:

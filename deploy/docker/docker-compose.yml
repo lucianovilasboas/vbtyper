@@ -13,6 +13,11 @@ services:
     image: vb-typer-api:local
     restart: unless-stopped
 
+    environment:
+      # Invariante 7: o banco guarda horário local. O container nasce em UTC,
+      # então o fuso precisa ser declarado (o systemd já herda o do host).
+      TZ: "${VB_TYPER_TZ:-America/Sao_Paulo}"
+
     env_file:
       # Padrão: o `.env` ao lado deste arquivo. `VB_TYPER_ENV_FILE` permite
       # manter o arquivo de segredos fora do repositório (ex.: /etc/vb-typer/env)

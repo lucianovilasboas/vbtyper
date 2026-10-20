@@ -179,6 +179,7 @@ Levantado no código — cada item é uma armadilha real:
 | `VB_TYPER_CONFIG_DIR=/data/config` | mantém qualquer estado fora do sistema de arquivos efêmero |
 | `VB_TYPER_API_TOKEN` | evita o arquivo de token com estado; é o valor que o desktop guarda |
 | `OPENAI_API_KEY` | o ambiente tem precedência; **não há cofre na imagem**, então `--setup` não se aplica |
+| `TZ` | o contêiner nasce em **UTC** e o banco guarda horário local (invariante 7): sem ele, o histórico fica 3 h à frente no Brasil |
 
 As **migrações rodam sozinhas** no start (`vb_typer.main:create_app`), e o
 `HEALTHCHECK` usa `/api/v1/health`, que é pública.
