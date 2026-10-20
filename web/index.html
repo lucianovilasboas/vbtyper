@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <title>VB Typer</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#fafafd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15151a" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="VB Typer">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon.png">
   <link rel="apple-touch-icon" href="/static/logo.png">
   <link rel="stylesheet" href="/static/style.css">
@@ -41,6 +48,17 @@
   </header>
 
   <main class="app">
+    <div class="install" id="install-banner" hidden>
+      <div class="install-text">
+        <strong>Instalar o VB Typer</strong>
+        <span id="install-help">Abre em janela própria, com ícone no aparelho.</span>
+      </div>
+      <div class="install-actions">
+        <button class="primary" id="install-confirm" type="button">Instalar</button>
+        <button class="ghost" id="install-dismiss" type="button">Agora não</button>
+      </div>
+    </div>
+
     <!-- Ditar -------------------------------------------------------------- -->
     <section class="view active" id="view-dictate">
       <div class="card options">

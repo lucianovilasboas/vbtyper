@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -151,6 +151,25 @@ def _mount_web_ui(app: FastAPI, settings: AppSettings, token: str) -> None:
             path="/",
         )
         return response
+
+    # O service worker precisa morar na raiz para controlar "/": servido em
+    # /static ele só controlaria /static. O manifest pode ficar em qualquer
+    # caminho, mas a raiz deixa a URL curta e estável.
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker() -> FileResponse:
+        return FileResponse(
+            web_dir / "static" / "sw.js",
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+        )
+
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def web_manifest() -> FileResponse:
+        return FileResponse(
+            web_dir / "static" / "manifest.webmanifest",
+            media_type="application/manifest+json",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     logger.info("Interface web servida de %s", web_dir)
 
