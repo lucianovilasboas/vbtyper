@@ -154,7 +154,17 @@ function stopMeter() {
 function setRecordButton(recording) {
   const button = $("record");
   button.classList.toggle("recording", recording);
+  button.classList.remove("canceling");
   button.querySelector(".record-icon").textContent = recording ? "■" : "🎙";
+  button.setAttribute("aria-label", recording ? "Parar e transcrever" : "Gravar");
+}
+
+function setProcessingButton() {
+  const button = $("record");
+  button.classList.remove("recording");
+  button.classList.add("canceling");
+  button.querySelector(".record-icon").textContent = "✕";
+  button.setAttribute("aria-label", "Cancelar transcrição");
 }
 
 async function startRecording() {
@@ -178,7 +188,6 @@ async function startRecording() {
   state.recordingStartedAt = performance.now();
   $("timer").textContent = "0,0 s";
   setRecordButton(true);
-  $("cancel").hidden = false;
   setStatus("Gravando… fale normalmente.");
   startTimer();
   startMeter();
@@ -191,7 +200,6 @@ async function stopAndTranscribe() {
   stopTimer();
   stopMeter();
   setRecordButton(false);
-  $("cancel").hidden = true;
   setStatus("Finalizando gravação…", "busy");
 
   let blob;
@@ -212,7 +220,6 @@ async function stopAndTranscribe() {
 
 async function submit(blob, duration) {
   setStatus("Enviando áudio para transcrição…", "busy");
-  $("cancel").hidden = false;
   try {
     const job = await api.createJob(blob, {
       model: state.settings.model,
@@ -221,12 +228,15 @@ async function submit(blob, duration) {
       duration,
     });
     state.jobId = job.id;
+    // Com o job em curso, o mesmo botão do microfone cancela.
+    setProcessingButton();
+    $("record").disabled = false;
     handleJobResult(await pollJob(job.id));
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
     state.jobId = null;
-    $("cancel").hidden = true;
+    setRecordButton(false);
     $("record").disabled = false;
   }
 }
@@ -268,23 +278,13 @@ function handleJobResult(job) {
   state.loaded.delete("history");
 }
 
-async function cancelCurrent() {
-  if (state.jobId) {
-    setStatus("Cancelando…", "busy");
-    try {
-      await api.cancelJob(state.jobId);
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-    return;
-  }
-  if (recorder.recording) {
-    recorder.cancel();
-    stopMeter();
-    stopTimer();
-    setRecordButton(false);
-    $("cancel").hidden = true;
-    setStatus("Gravação descartada.");
+async function cancelJob() {
+  if (!state.jobId) return;
+  setStatus("Cancelando…", "busy");
+  try {
+    await api.cancelJob(state.jobId);
+  } catch (error) {
+    setStatus(error.message, "error");
   }
 }
 
@@ -732,10 +732,14 @@ function loadSettingsTab() {
 
 function bindEvents() {
   $("record").addEventListener("click", () => {
-    if (recorder.recording) stopAndTranscribe();
-    else startRecording();
+    if (recorder.recording) {
+      stopAndTranscribe();
+    } else if (state.jobId) {
+      cancelJob();
+    } else {
+      startRecording();
+    }
   });
-  $("cancel").addEventListener("click", cancelCurrent);
   $("copy").addEventListener("click", copyTranscript);
   $("clear").addEventListener("click", () => {
     $("transcript").value = "";
