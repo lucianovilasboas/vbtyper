@@ -10,6 +10,9 @@ const POLL_TIMEOUT_MS = 180_000;
 const HISTORY_PAGE = 25;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 const THEME_KEY = "vb-typer-theme";
+const VIEW_KEY = "vb-typer-view";
+const VIEWS = new Set(["dictate", "activity", "history", "settings"]);
+const REFRESH_INTERVAL_MS = 10_000;
 const HEATMAP_DAYS = 91;
 const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -45,6 +48,8 @@ const state = {
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
   theme: localStorage.getItem(THEME_KEY) || "auto",
   loaded: new Set(),
+  view: "dictate",
+  lastSeenId: null,
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -265,6 +270,7 @@ function handleJobResult(job) {
   const text = result?.text || "";
   $("transcript").value = text;
   state.transcriptId = result?.id ?? null;
+  if (result?.id) state.lastSeenId = result.id;
   state.resultShownAt = performance.now();
   updateWordCount();
   $("copy").disabled = !text.trim();
@@ -276,6 +282,7 @@ function handleJobResult(job) {
     );
   }
   state.loaded.delete("history");
+  state.loaded.delete("activity");
 }
 
 async function cancelJob() {
@@ -698,15 +705,19 @@ async function loadActivity() {
 // --- navegação --------------------------------------------------------------
 
 function selectView(name) {
-  wave.setActive(name === "dictate");
+  const view = VIEWS.has(name) ? name : "dictate";
+  state.view = view;
+  localStorage.setItem(VIEW_KEY, view);
+
+  wave.setActive(view === "dictate");
   for (const tab of document.querySelectorAll(".nav button")) {
-    tab.setAttribute("aria-selected", String(tab.dataset.view === name));
+    tab.setAttribute("aria-selected", String(tab.dataset.view === view));
   }
-  for (const view of document.querySelectorAll(".view")) {
-    view.classList.toggle("active", view.id === `view-${name}`);
+  for (const section of document.querySelectorAll(".view")) {
+    section.classList.toggle("active", section.id === `view-${view}`);
   }
   const loaders = { history: loadHistoryTab, activity: loadActivityTab, settings: loadSettingsTab };
-  const loader = loaders[name];
+  const loader = loaders[view];
   if (loader) loader();
 }
 
@@ -728,6 +739,59 @@ function loadSettingsTab() {
   state.loaded.add("settings");
   loadSettings().catch((error) => setStatus(error.message, "error"));
   loadAbout();
+}
+
+// --- atualização automática -------------------------------------------------
+
+/**
+ * Checa de tempos em tempos se chegou ditado novo (de qualquer cliente: este
+ * navegador, o desktop, outro aparelho) e atualiza a tela ativa.
+ *
+ * Polling em vez de WebSocket/SSE: o projeto já é baseado em polling, não ganha
+ * dependência, atravessa o Traefik sem estado de conexão e o worker roda num
+ * processo só — um fluxo de eventos seria peça nova sem ganho real aqui.
+ */
+async function checkNewDictations() {
+  if (document.hidden || recorder.recording || state.jobId) return;
+
+  let newest;
+  try {
+    // A lista vem ordenada por id desc: a primeira linha é o ditado mais recente.
+    const page = await api.listTranscriptions({ limit: 1 });
+    newest = page.items?.[0]?.id ?? null;
+  } catch {
+    return; // checagem de fundo: falha silenciosa, tenta de novo no próximo ciclo
+  }
+
+  if (state.lastSeenId === null) {
+    state.lastSeenId = newest;
+    return;
+  }
+  if (newest === state.lastSeenId) return;
+  state.lastSeenId = newest;
+
+  // Quem já pediu "carregar mais" não é atropelado: recarregamos só a primeira
+  // página (25 linhas). `historyOffset` conta linhas, não páginas.
+  if (state.view === "history" && state.historyOffset > HISTORY_PAGE) return;
+
+  state.loaded.delete("history");
+  state.loaded.delete("activity");
+  if (state.view === "history") loadHistoryTab();
+  else if (state.view === "activity") loadActivityTab();
+}
+
+function startAutoRefresh() {
+  const tick = () => {
+    checkNewDictations().finally(() => {
+      window.setTimeout(tick, REFRESH_INTERVAL_MS);
+    });
+  };
+  window.setTimeout(tick, REFRESH_INTERVAL_MS);
+
+  // Ao voltar para a aba, não espera o próximo ciclo.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkNewDictations();
+  });
 }
 
 function bindEvents() {
@@ -827,6 +891,10 @@ function bindEvents() {
 async function init() {
   applyTheme(state.theme, { persist: false });
   bindEvents();
+
+  // A aba escolhida sobrevive à recarga; sem escolha anterior, começa em Ditar.
+  selectView(localStorage.getItem(VIEW_KEY) || "dictate");
+  startAutoRefresh();
 
   if (!Recorder.supported) {
     $("record").disabled = true;
