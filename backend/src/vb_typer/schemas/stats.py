@@ -36,6 +36,14 @@ class StatsLongest(BaseModel):
     words: int
 
 
+class StatsHour(BaseModel):
+    hour: int
+    label: str
+    count: int
+    seconds: float
+    words: int
+
+
 class StatsInsights(BaseModel):
     words_per_minute: float
     dictations_per_active_day: float
@@ -56,4 +64,5 @@ class StatsResponse(BaseModel):
     granularity: Granularity
     summary: StatsSummary
     series: list[StatsPoint]
+    hours: list[StatsHour]
     insights: StatsInsights

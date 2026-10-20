@@ -37,6 +37,7 @@ def get_stats(
             "granularity": granularity,
             "summary": summary,
             "series": series,
+            "hours": container.stats.hours_of_day(start, end),
             "insights": insights,
         }
     )

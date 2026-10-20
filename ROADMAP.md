@@ -233,6 +233,11 @@ próprios: quem abre e fecha o microfone é o gravador. Um único loop de anima�
 pausado quando a aba Ditar não está visível, e canvas dimensionado por
 `devicePixelRatio`.
 
+**Histórico no celular e horas na Atividade** (`v0.11.0`): abaixo de 720 px a
+tabela de 6 colunas vira lista de cartões (rótulos curtos, texto em até 3 linhas,
+sem rolagem lateral). A Atividade ganhou o cartão **Por hora do dia** — 24 baldes,
+inclusive vazios, com o pico — e passou a abrir em **7 dias** por padrão.
+
 ### O que falta desta seção
 
 Duas análises que estavam no ROADMAP do 1.x e ainda não existem:
