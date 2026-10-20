@@ -42,7 +42,7 @@ const state = {
   historyOffset: 0,
   historyTotal: 0,
   search: "",
-  period: { days: 30, granularity: "day" },
+  period: { days: 7, granularity: "day" },
   metric: "words",
   series: [],
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
@@ -427,14 +427,17 @@ function historyRow(item) {
 
   const audio = cell("num");
   audio.textContent = item.duration_s ? humanSeconds(item.duration_s) : "—";
+  audio.dataset.label = "áudio";
   row.append(audio);
 
   const words = cell("num");
   words.textContent = number.format(item.words);
+  words.dataset.label = "palavras";
   row.append(words);
 
   const cost = cell("num");
   cost.textContent = item.duration_s ? formatCost(item.cost_usd) : "—";
+  cost.dataset.label = "custo";
   cost.title = `tarifa de ${item.model}`;
   row.append(cost);
 
@@ -591,6 +594,23 @@ function drawPace() {
   );
 }
 
+function drawHours(data) {
+  const hours = data.hours || [];
+  renderBars(
+    $("hours-chart"),
+    hours.map((hour) => hour.count),
+    hours.map((hour) => hour.label),
+    { format: (value) => `${number.format(value)} ditado${value === 1 ? "" : "s"}` }
+  );
+  const peak = hours.reduce(
+    (top, hour) => (hour.count > top.count ? hour : top),
+    hours[0] || { label: "—", count: 0 }
+  );
+  $("hours-peak").textContent = peak.count
+    ? `pico às ${peak.label}`
+    : "sem dados no período";
+}
+
 /* Últimos 91 dias, alinhados no início da semana, para as colunas fecharem. */
 function heatmapCells(days, weekStart) {
   const start = new Date();
@@ -698,6 +718,7 @@ async function loadActivity() {
   renderMetrics(data);
   drawVolume();
   drawPace();
+  drawHours(data);
   renderConsistency(daily.series, state.settings.week_start);
   renderInsights(data);
 }

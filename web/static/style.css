@@ -174,6 +174,7 @@ h1, h2 { margin: 0; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; 
 .no-data-note { margin-top: 8px; color: var(--muted); font-size: 0.8rem; }
 
 .lower-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; margin-top: 18px; }
+.hours-card { margin-top: 18px; }
 .lower-card { padding: 18px 20px; }
 .heat-area { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; margin-top: 12px; }
 .heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr); gap: 3px; }
@@ -351,4 +352,27 @@ textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transp
   .metrics { grid-template-columns: 1fr; }
   .metric { border-right: 0; border-bottom: 1px solid var(--line); }
   .metric:last-child { border-bottom: 0; }
+
+  /* Histórico: a tabela de 6 colunas vira lista de cartões, para o conteúdo
+     numérico não estourar a largura do celular. */
+  .history-table,
+  .history-table tbody { display: block; }
+  .history-table thead { display: none; }
+  .history-table tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .history-table tr:last-child { border-bottom: 0; }
+  .history-table td { display: block; padding: 0; border: 0; }
+  .history-table td:nth-child(5),
+  .history-table td:nth-child(6) { flex-basis: 100%; }
+  .history-table td[data-label]::before {
+    content: attr(data-label) " ";
+    color: var(--muted);
+  }
+  .history-table .text-cell { max-width: none; }
+  .history-table .text { -webkit-line-clamp: 3; }
 }

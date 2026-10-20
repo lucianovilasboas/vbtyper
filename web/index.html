@@ -109,8 +109,8 @@
       <div class="section-head">
         <div class="section-title">Tendências <small id="period-caption"></small></div>
         <div class="period" id="activity-periods" role="group" aria-label="Período">
-          <button data-days="7" data-granularity="day" aria-pressed="false">7 dias</button>
-          <button data-days="30" data-granularity="day" aria-pressed="true">30 dias</button>
+          <button data-days="7" data-granularity="day" aria-pressed="true">7 dias</button>
+          <button data-days="30" data-granularity="day" aria-pressed="false">30 dias</button>
           <button data-days="90" data-granularity="day" aria-pressed="false">90 dias</button>
           <button data-days="180" data-granularity="month" aria-pressed="false">6 meses</button>
           <button data-days="365" data-granularity="month" aria-pressed="false">1 ano</button>
@@ -158,6 +158,13 @@
           <div class="weekday-chart" id="weekday-chart"></div>
         </article>
       </div>
+
+      <article class="lower-card hours-card">
+        <div class="lower-head"><strong>Por hora do dia</strong><span id="hours-peak">—</span></div>
+        <svg class="chart" id="hours-chart" viewBox="0 0 780 205" preserveAspectRatio="none"
+             role="img" aria-label="Ditados por hora do dia"></svg>
+        <div class="no-data-note">Ditados por hora do dia, somando o período escolhido.</div>
+      </article>
 
       <div class="notice">
         <span class="accent-dot"></span>

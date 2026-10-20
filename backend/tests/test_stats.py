@@ -139,3 +139,24 @@ async def test_average_duration_ignores_unknown_durations(client, auth, containe
     assert body["summary"]["no_duration"] == 1
     assert body["summary"]["seconds"] == 60.0
     assert body["insights"]["average_duration"] == 30.0
+
+
+async def test_hours_of_day_has_24_buckets(client, auth, container):
+    """A distribuição por hora do dia vem completa, inclusive as horas vazias."""
+    base = (datetime.now() - timedelta(hours=3)).replace(minute=0, second=0, microsecond=0)
+    other = base - timedelta(hours=2)
+    _record(container, text="a b", when=base, duration=10)
+    _record(container, text="c", when=base + timedelta(minutes=30), duration=5)
+    _record(container, text="d e f", when=other, duration=7)
+
+    response = await client.get("/api/v1/stats", headers=auth)
+    hours = response.json()["hours"]
+
+    assert len(hours) == 24
+    assert [item["hour"] for item in hours] == list(range(24))
+    assert sum(item["count"] for item in hours) == 3
+    assert sum(1 for item in hours if item["count"] == 0) == 22
+    assert hours[base.hour]["count"] == 2
+    assert hours[base.hour]["seconds"] == 15.0
+    assert hours[other.hour]["count"] == 1
+    assert hours[other.hour]["words"] == 3

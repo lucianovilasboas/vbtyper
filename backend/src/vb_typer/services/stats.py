@@ -172,6 +172,33 @@ class StatsService:
             bucket["words"] += int(words or 0)
         return list(buckets.values())
 
+    def hours_of_day(self, date_from: str, date_to: str) -> list[dict]:
+        """Distribuição por hora do dia (0–23), inclusive as horas sem ditado."""
+        buckets = {
+            hour: {"hour": hour, "label": f"{hour:02d}h", "count": 0, "seconds": 0.0, "words": 0}
+            for hour in range(24)
+        }
+        with self.session_factory() as session:
+            rows = session.execute(
+                select(
+                    Transcription.created_at,
+                    Transcription.duration_s,
+                    Transcription.words,
+                ).where(
+                    Transcription.created_at >= date_from,
+                    Transcription.created_at <= date_to,
+                )
+            ).all()
+
+        for created_at, duration_s, words in rows:
+            bucket = buckets.get(int(created_at[11:13]))
+            if bucket is None:
+                continue
+            bucket["count"] += 1
+            bucket["seconds"] += float(duration_s or 0.0)
+            bucket["words"] += int(words or 0)
+        return list(buckets.values())
+
     def insights(self, date_from: str, date_to: str) -> dict:
         summary = self.summary(date_from, date_to)
         hours = self.series(date_from, date_to, Granularity.HOUR)
