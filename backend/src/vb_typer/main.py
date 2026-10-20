@@ -147,6 +147,7 @@ def _mount_web_ui(app: FastAPI, settings: AppSettings, token: str) -> None:
             token,
             httponly=True,
             samesite="strict",
+            secure=settings.cookie_secure,
             path="/",
         )
         return response

@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 19/10/2026 — tudo em `v0.7.2` (backend: 98 testes; desktop:
+Última atualização: 20/10/2026 — tudo em `v0.8.0` (backend: 99 testes; desktop:
 169 testes).
 
 ---
@@ -259,10 +259,10 @@ para desmontar bandeja e indicador ao parar.
 
 ### O que falta desta seção
 
-**Empacotamento one-file (PyInstaller)** — para distribuir sem exigir `uv` e o
-repositório no disco. Lembrando que **PyGObject não empacota**: a bandeja e o
-indicador continuam como helpers rodando no Python do sistema, e o pacote precisa
-levar `tray/` e `assets/` (o `tray.resource_base()` já procura em `_MEIPASS`).
+**AppImage x86_64 feito.** `scripts/build-appimage.sh` gera o cliente one-file
+com PyInstaller dentro de um AppImage executável diretamente. O token fica na
+configuração do usuário; os helpers GTK e `arecord` continuam sendo dependências
+do Linux Mint, conforme a arquitetura atual do cliente.
 
 ---
 
@@ -329,6 +329,15 @@ dados em `0600`/`0700`.
 **Decisão de exposição: ZeroTier.** Enquanto não houver login, a porta é
 publicada apenas na interface ZeroTier (`VB_TYPER_BIND_ADDR`) — nunca `0.0.0.0`,
 porque **quem alcança `/` recebe um cookie de sessão válido**.
+
+**Implantação na VPS (`v0.8.0`).** `deploy/docker/docker-compose.vps.yml` roda
+atrás do Traefik **compartilhado** da ovm-1 (rede `proxy`, resolver
+`letsencrypt`, nenhuma porta publicada). Enquanto não há login, a **interface**
+fica sob Basic Auth no Traefik; `/api/*` segue protegido pelo token do app — o
+Basic consumiria o `Authorization: Bearer` do desktop. O cookie de sessão passou
+a honrar `VB_TYPER_COOKIE_SECURE` atrás de TLS. Verificado com o domínio real:
+`Host` e `Origin` aceitos, cookie `Secure`, 401 sem token, nenhuma porta no host.
+O Basic Auth sai quando a etapa 2 (contas) entrar.
 
 **Defeito corrigido no caminho:** `VB_TYPER_ALLOWED_HOSTS`, `CORS_ORIGINS`,
 `ALLOWED_MODELS` e `ALLOWED_CONTENT_TYPES` **não** funcionavam por ambiente — o

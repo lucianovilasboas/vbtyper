@@ -1,0 +1,72 @@
+# =====================================================================
+# VB Typer 2.0 — produção na VPS (ovm-1) atrás do Traefik compartilhado
+# ---------------------------------------------------------------------
+# O Traefik NÃO mora neste arquivo: ele já roda na VPS, usa a rede externa
+# `proxy` e o resolver `letsencrypt` (mesmo padrão do ifeventos_app).
+#
+#   cp .env.vps.example .env     # e preencha
+#   docker compose -f docker-compose.vps.yml up -d --build
+#
+# Nenhuma porta é publicada no host: o público entra pelo Traefik (80/443).
+# Para rodar na máquina local, use `docker-compose.yml`.
+# =====================================================================
+
+name: vbtyper
+
+# Rotação de logs: os ditados geram pouca saída, mas o worker e o uvicorn
+# escrevem continuamente.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  api:
+    container_name: vbtyper_api
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: vb-typer-api:latest
+    restart: unless-stopped
+    logging: *default-logging
+    env_file:
+      - .env
+    volumes:
+      # Banco (vb-typer.db) e áudios (audio/) — sem volume, cada "up" perde tudo.
+      - vb-typer-data:/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+
+      # A API vem antes: o cliente desktop manda `Authorization: Bearer`, que
+      # não pode ser consumido pelo Basic Auth do Traefik. Aqui quem protege é
+      # o token do próprio app.
+      - "traefik.http.routers.vbtyper-api.rule=Host(`${VB_TYPER_DOMAIN:?defina em .env}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.vbtyper-api.entrypoints=websecure"
+      - "traefik.http.routers.vbtyper-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.vbtyper-api.priority=20"
+      - "traefik.http.routers.vbtyper-api.service=vbtyper"
+
+      # Todo o resto (a página que entrega o cookie de sessão e /docs) fica com
+      # Basic Auth — é o portão temporário até existir o login de verdade.
+      - "traefik.http.routers.vbtyper.rule=Host(`${VB_TYPER_DOMAIN:?defina em .env}`)"
+      - "traefik.http.routers.vbtyper.entrypoints=websecure"
+      - "traefik.http.routers.vbtyper.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.vbtyper.priority=10"
+      - "traefik.http.routers.vbtyper.service=vbtyper"
+      - "traefik.http.routers.vbtyper.middlewares=vbtyper-auth"
+      - "traefik.http.middlewares.vbtyper-auth.basicauth.users=${VB_TYPER_BASIC_AUTH:?defina em .env}"
+
+      # O contêiner escuta em 8765 (ver Dockerfile).
+      - "traefik.http.services.vbtyper.loadbalancer.server.port=8765"
+
+volumes:
+  vb-typer-data:
+    name: vb-typer-data
+
+networks:
+  proxy:
+    external: true

@@ -40,6 +40,21 @@ VB_TYPER_ALLOWED_HOSTS=127.0.0.1,localhost,10.147.20.5
 VB_TYPER_CORS_ORIGINS=http://10.147.20.5:8765
 ```
 
+Se o servidor também estiver disponível pela URL Tailscale
+`https://xps.tail5ae70d.ts.net:8444` (por exemplo, por um proxy HTTPS já
+configurado no host), inclua o hostname e a origem exata nas listas do arquivo
+de ambiente do backend:
+
+```ini
+VB_TYPER_ALLOWED_HOSTS=127.0.0.1,localhost,10.147.20.5,xps.tail5ae70d.ts.net
+VB_TYPER_CORS_ORIGINS=http://10.147.20.5:8765,https://xps.tail5ae70d.ts.net:8444
+```
+
+O proxy/encaminhamento Tailscale precisa direcionar essa URL à porta publicada
+pela API. O `VB_TYPER_BIND_ADDR` do Compose continua limitado ao endereço da
+interface privada onde a API está publicada; não use `0.0.0.0` para adicionar
+Tailscale.
+
 `ALLOWED_HOSTS` e `CORS_ORIGINS` são validações distintas: a primeira checa o
 cabeçalho `Host`, a segunda o `Origin`. Esquecer a segunda faz o webapp
 responder **403 `invalid_origin`** ao ditar, mesmo com a página abrindo.
@@ -65,6 +80,47 @@ Duas diferenças que custam tempo:
 
 E um aviso: `docker compose config` mostra o resultado final **com os segredos em
 claro**. Não rode em terminal compartilhado nem cole a saída em lugar nenhum.
+
+## VPS (ovm-1) com o Traefik compartilhado
+
+Na VPS o Traefik **não** pertence a este projeto: ele já roda com a rede externa
+`proxy` e o resolver `letsencrypt` (mesmo padrão do `ifeventos_app`). Use o
+arquivo de produção, que **não publica porta nenhuma**:
+
+```bash
+git clone https://github.com/lucianovilasboas/vbtyper.git
+cd vbtyper/deploy/docker
+cp .env.vps.example .env
+# preencha OPENAI_API_KEY, VB_TYPER_API_TOKEN e VB_TYPER_BASIC_AUTH
+
+# hash do Basic Auth — no .env cada `$` vai dobrado:
+openssl passwd -apr1 'SENHA' | sed 's/\$/\$\$/g'
+# → VB_TYPER_BASIC_AUTH=luciano:<hash dobrado>
+
+docker compose -f docker-compose.vps.yml up -d --build
+```
+
+Pré-requisitos na VPS: rede `proxy` existente (`docker network ls`), portas
+**80 e 443** liberadas (na Oracle são dois lugares: security list **e** iptables
+da VM) e o DNS `A` do domínio apontando para ela. O certificado é emitido no
+primeiro acesso (HTTP-01 pelo entrypoint `web`).
+
+### O que fica protegido, e por quê
+
+| Caminho | Proteção |
+|---|---|
+| `/` e `/static/*` (a interface) | **Basic Auth** no Traefik — é a página que entrega o cookie de sessão |
+| `/api/*` | **token do app** (`Authorization: Bearer`) |
+
+O Basic Auth **não** pode ser aplicado em `/api`: ele consome o mesmo cabeçalho
+`Authorization` que o cliente desktop usa. Por isso são dois roteadores, com
+prioridade maior para o da API.
+
+Sem esse portão, qualquer pessoa que alcance `/` recebe uma sessão válida — ele é
+**temporário** e sai quando o login multiusuário entrar.
+
+Trocar a senha: gere outro hash, troque no `.env` e rode
+`docker compose -f docker-compose.vps.yml up -d`.
 
 ## Operação
 

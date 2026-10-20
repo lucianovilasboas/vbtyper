@@ -54,6 +54,18 @@ async def test_root_serves_html_and_sets_httponly_cookie(web_client):
     assert TOKEN_COOKIE in cookie
     assert "httponly" in cookie
     assert "samesite=strict" in cookie
+    assert "secure" not in cookie
+
+
+async def test_secure_cookie_when_configured(web_settings):
+    """Atrás de TLS (Traefik), o cookie de sessão ganha o atributo Secure."""
+    settings = web_settings.model_copy(update={"cookie_secure": True})
+    application = create_app(settings)
+    async with LifespanManager(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+            response = await client.get("/")
+    assert "secure" in response.headers["set-cookie"].lower()
 
 
 async def test_static_assets_are_served(web_client):

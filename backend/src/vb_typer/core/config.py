@@ -75,6 +75,8 @@ class AppSettings(BaseSettings):
     allowed_hosts: CsvTuple = ("127.0.0.1", "localhost")
     cors_origins: CsvTuple = ()
     trust_origin_header: bool = True
+    # Atrás de TLS (Traefik, por exemplo), o cookie de sessão deve ser Secure.
+    cookie_secure: bool = False
 
     # Interface web (servida pelo próprio backend, na mesma origem).
     serve_web_ui: bool = True
