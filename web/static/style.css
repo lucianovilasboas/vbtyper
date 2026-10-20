@@ -284,8 +284,7 @@ details.raw p { margin: 6px 0 0; }
 .options select, .options input { border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 9px 11px; min-width: 190px; }
 
 .record-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 22px; }
-.meter { width: min(100%, 420px); height: 8px; border-radius: 999px; background: var(--accent-soft); overflow: hidden; }
-.meter-fill { height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
+.wave { width: min(100%, 520px); height: 120px; display: block; }
 .record {
   width: 84px;
   height: 84px;

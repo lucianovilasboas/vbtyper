@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { Recorder } from "./recorder.js";
+import { createWave } from "./wave.js";
 import { renderBars, renderHeatmap, renderLine, renderWeekdays } from "./charts.js";
 
 const $ = (id) => document.getElementById(id);
@@ -27,12 +28,11 @@ const money = new Intl.NumberFormat("pt-BR", {
 });
 
 const recorder = new Recorder();
+const wave = createWave($("wave"));
 
 const state = {
   recordingStartedAt: 0,
   timerId: null,
-  meterRaf: 0,
-  audioContext: null,
   jobId: null,
   transcriptId: null,
   resultShownAt: 0,
@@ -142,30 +142,13 @@ function stopTimer() {
 }
 
 function startMeter() {
-  const stream = recorder.stream;
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!stream || !AudioContextClass) return;
-  state.audioContext = new AudioContextClass();
-  const analyser = state.audioContext.createAnalyser();
-  analyser.fftSize = 512;
-  state.audioContext.createMediaStreamSource(stream).connect(analyser);
-  const samples = new Uint8Array(analyser.frequencyBinCount);
-  const tick = () => {
-    analyser.getByteTimeDomainData(samples);
-    let peak = 0;
-    for (const value of samples) peak = Math.max(peak, Math.abs(value - 128) / 128);
-    $("meter").style.width = `${Math.min(100, peak * 150)}%`;
-    state.meterRaf = window.requestAnimationFrame(tick);
-  };
-  tick();
+  // A onda reage ao mesmo stream que está sendo gravado.
+  if (recorder.stream) wave.start(recorder.stream);
 }
 
 function stopMeter() {
-  if (state.meterRaf) window.cancelAnimationFrame(state.meterRaf);
-  state.meterRaf = 0;
-  if (state.audioContext) state.audioContext.close().catch(() => {});
-  state.audioContext = null;
-  $("meter").style.width = "0";
+  // Sem áudio a onda volta ao repouso (o loop continua desenhando).
+  wave.stop();
 }
 
 function setRecordButton(recording) {
@@ -715,6 +698,7 @@ async function loadActivity() {
 // --- navegação --------------------------------------------------------------
 
 function selectView(name) {
+  wave.setActive(name === "dictate");
   for (const tab of document.querySelectorAll(".nav button")) {
     tab.setAttribute("aria-selected", String(tab.dataset.view === name));
   }

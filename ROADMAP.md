@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 19/10/2026 — tudo em `v0.6.1` (backend: 98 testes; desktop:
+Última atualização: 19/10/2026 — tudo em `v0.7.0` (backend: 98 testes; desktop:
 169 testes).
 
 ---
@@ -225,6 +225,13 @@ tela de configurações com miniatura de cada tema (claro/escuro/automático).
 O custo por ditado vem da API (`cost_usd` em cada transcrição), calculado pela
 tarifa do modelo em `domain/pricing.py` — uma fonte só, sem tabela duplicada no
 JavaScript.
+
+**Onda do microfone na aba Ditar** (`v0.7.0`): o efeito do demo `wave.js` passou
+a ser o medidor — gradiente de nove paradas, envelope na onda em repouso, traço
+reativo ao nível real do microfone, brilho de 20% e a linha central. Sem botões
+próprios: quem abre e fecha o microfone é o gravador. Um único loop de animação,
+pausado quando a aba Ditar não está visível, e canvas dimensionado por
+`devicePixelRatio`.
 
 ### O que falta desta seção
 
