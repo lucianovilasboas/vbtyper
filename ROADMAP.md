@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 20/10/2026 — tudo em `v0.11.0` (backend: 102 testes; desktop:
+Última atualização: 21/10/2026 — tudo em `v0.12.1` (backend: 121 testes; desktop:
 169 testes).
 
 ---
@@ -45,88 +45,33 @@ ganhou os itens *Modo literal* / *Modo inteligente* (`v0.5.1`) — com o vigente
 marcado no rótulo (itens de rádio foram descartados: ver a armadilha anotada no
 `AGENTS.md`).
 
-### Pendente — escolher o modelo do ajuste e ver o custo de cada etapa
+### Perfis de texto: **feito em `v0.12.0`** (backend + web; clientes depois)
 
-**Pedido (Luciano, 19/10):** "só a possibilidade de poder configurar o modelo na
-tela de configuração e de ver os custos separados quando o modelo for usado. E é
-claro que o modelo só deve ser usado em caso de extrema necessidade para
-economizar. E na hora de mostrar lá no histórico, deixar claro o valor de cada
-etapa separada, pelo menos a estimativa, para eu ter esse controle dos gastos."
+Dez perfis embutidos — literal, revisado, e-mail, WhatsApp, programação, prompt,
+acadêmico, currículo, carta e ata — mais perfis personalizados (duplicar e
+editar; os embutidos são somente leitura). A transcrição fiel fica em
+`transcriptions.raw_text` e é a **fonte de toda versão editorial**:
+`transcription_versions` guarda cada geração com texto, modelo, tokens e custo, e
+a conversão nunca parte de uma versão já editada. O job aceita `profile` (`mode`
+continua como alias para o desktop), `/settings` ganhou `default_profile` e
+`POST /transcriptions/{id}/render` gera outra versão sem re-transcrever o áudio.
+Na web: seletor na aba Ditar, cartão de perfis nas Configurações e seletor de
+versões (mais "gerar versão") no Histórico. Os clientes desktop/macOS/Windows
+ficam para depois.
 
-Nada disso muda o comportamento do ditado: é **controle de gasto**.
+**Selects e fases (`v0.12.1`).** Modelo, idioma e perfil são trocados direto na
+linha "Ditando com"; a linha de status acompanha a fase real do job
+(transcrevendo → montando o e-mail → pronto) pela coluna `jobs.phase`.
 
-**O que existe hoje (verificado no código):**
+### Pendente — escolher o modelo do ajuste
 
-- o ajuste usa `smart_model` da configuração (`core/config.py`, padrão
-  `gpt-4o-mini`), e ele **não** está em `/api/v1/settings` — nem na leitura nem
-  na escrita. Não há como trocar pela interface;
-- o adaptador **ignora o campo `usage`** da resposta do chat: o custo do ajuste
-  não é medido nem registrado. O "custo estimado" do histórico e da Atividade
-  conta **só a transcrição**.
-
-**Por que isso importa** (números de referência para uma fala de 20 s, ~60
-palavras; tarifas públicas, sujeitas a mudança — conferir na implementação):
-
-| Etapa | Custo |
-|---|---|
-| Transcrição (`gpt-4o-mini-transcribe`, US$ 0,003/min) | US$ 0,0010 |
-| Ajuste com `gpt-4o-mini` (~80 tokens entrada + ~85 saída) | US$ 0,00006 (≈6%) |
-| Ajuste com `gpt-4o` (US$ 2,50/M entrada, US$ 10/M saída) | US$ 0,0011 (**≈ o ditado inteiro**) |
-
-Numa fala curta (5 s) o ajuste com um modelo caro passa de 100% do custo da
-transcrição. Escolher o modelo no escuro é escolher o gasto no escuro.
-
-**Parte 1 — modelo do ajuste selecionável**
-
-- `app_settings.smart_model` (migração), com `allowed_smart_models` na
-  configuração, no padrão do `model`/`allowed_models` que já existe;
-- `/settings` passa a **expor** `smart_momporta** (números de referência para uma fala de 20 s, ~60
-palavras; tarifas públicas, sujeitas a mudança — conferir na implementação):
-
-| Etapa | Custo |
-|---|---|
-| Transcrição (`gpt-4o-mini-transcribe`, US$ 0,003/min) | US$ 0,0010 |
-| Ajuste com `gpt-4o-mini` (~80 tokens entrada + ~85 saída) | US$ 0,00006 (≈6%) |
-| Ajuste com `gpt-4o` (US$ 2,50/M entrada, US$ 10/M saída) | US$ 0,0011 (**≈ o ditado inteiro**) |
-
-Numa fala curta (5 s) o ajuste com um modelo caro passa de 100% do custo da
-transcrição. Escolher o modelo no escuro é escolher o gasto no escuro.
-
-**Parte 1 — modelo do ajuste selecionável**
-
-- `app_settings.smart_model` (migração), com `allowed_smart_models` na
-  configuração, no padrão do `model`/`allowed_models` que já existe;
-- `/settings` passa a **expor** `smart_model` e a lista, e a **aceitar** a troca
-  (validada);
-- **correção embutida:** hoje o worker lê o modelo do ajuste do *ambiente*, não
-  da configuração — o mesmo defeito já corrigido no modo. Resolver na origem (o
-  job resolve a escolha vigente);
-- na tela de Configurações, um combo com o modelo **e o preço ao lado** de cada
-  opção, deixando claro que só afeta o modo inteligente;
-- o cliente desktop não muda: quem aplica o modelo é o backend.
-
-**Parte 2 — custo de cada etapa, separado**
-
-- ler o `usage` da resposta do ajuste e guardar por ditado os tokens e o custo
-  real (`adjust_cost_usd`), com a tabela de texto em `domain/pricing.py`, ao lado
-  da de áudio;
-- **histórico:** a coluna CUSTO com o total, e a conta aberta no bloco de detalhes
-  que já existe nas linhas inteligentes — "transcrição US$ 0,0010 + ajuste
-  US$ 0,0001 (123 tokens)";
-- **Atividade:** o "custo estimado" passa a somar os ajustes, com a linha de apoio
-  dizendo a parcela;
-- **CSV:** as duas colunas de custo, para contabilidade.
-
-**Gastar só quando necessário**
-
-A heurística de pulo já existe (`services/normalize.py`): prosa sem número, data,
-valor ou sigla não gasta a segunda chamada. Ao implementar isto, vale revisar se o
-gatilho deve ficar **ainda mais restrito** — o pedido é usar o ajuste só em caso
-de necessidade real.
-
-**Decisões em aberto:** quais modelos oferecer (proposta: `gpt-4o-mini` como
-padrão e `gpt-4o` como opção); duas colunas de custo ou total + detalhe; se a
-parcela do ajuste entra no custo estimado da Atividade.
+O **custo por versão já aparece** (feito junto com os perfis: o `usage` do chat é
+capturado, com a tabela de texto em `domain/pricing.py`). Falta tornar o
+**modelo do ajuste** selecionável: hoje ele vem de `smart_model` do ambiente
+(`gpt-4o-mini`) e não está em `/api/v1/settings`. Referência para uma fala de
+20 s: transcrição US$ 0,0010; ajuste com `gpt-4o-mini` ≈ US$ 0,00006; com
+`gpt-4o` ≈ US$ 0,0011 (o ditado inteiro). O worker deve ler o modelo da
+configuração, não do ambiente.
 
 ### Estruturado: pendente, e é o que falta decidir
 
