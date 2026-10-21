@@ -273,9 +273,24 @@ details.raw p { margin: 6px 0 0; }
 .mini-box i { display: block; height: 5px; border-radius: 3px; background: var(--preview-accent); opacity: 0.55; }
 .theme-caption { display: block; margin-top: 6px; color: var(--muted); font-size: 0.78rem; }
 .theme-help { color: var(--muted); font-size: 0.82rem; }
-.hotkey { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
+.hotkey { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
 .key { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 7px; padding: 3px 9px; background: var(--panel-2); font-size: 0.8rem; font-weight: 600; }
 select.key { padding: 3px 6px; color: var(--ink); }
+
+/* Select de perfil na aba Ditar: nativo e óbvio, não um chip. */
+.profile-select {
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  height: 30px;
+  padding: 0 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.profile-select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 
 /* --------------------------------------------------------------- perfis */
 
