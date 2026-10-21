@@ -83,6 +83,7 @@ class JobManager:
         # editoriais sempre têm o que fazer.
         if profile.slug == REVISED_SLUG and not needs_normalization(text):
             return text, TranscriptionMode.SMART, None, profile.slug
+        await asyncio.to_thread(self.service.set_phase, context.id, "rendering")
         try:
             adjusted, usage = await self.openai.normalize(
                 text=text,

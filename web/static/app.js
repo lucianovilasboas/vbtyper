@@ -243,12 +243,35 @@ async function submit(blob, duration) {
   }
 }
 
+const PROFILE_PHASE_TEXT = {
+  revisado: "Revisando o texto…",
+  email: "Montando o e-mail…",
+  whatsapp: "Ajustando a mensagem…",
+  programacao: "Organizando a tarefa…",
+  prompt: "Montando as instruções…",
+  academico: "Ajustando o texto acadêmico…",
+  curriculo: "Organizando o currículo…",
+  carta: "Montando a carta…",
+  ata: "Montando a ata…",
+};
+
+/** Mensagem da fase atual do job, como o servidor a está executando. */
+function jobPhaseText(job) {
+  if (job.phase === "rendering") {
+    return PROFILE_PHASE_TEXT[job.profile] || "Aplicando o perfil…";
+  }
+  if (job.phase === "transcribing" || job.status === "running") {
+    return "Transcrevendo o áudio…";
+  }
+  return "Na fila…";
+}
+
 async function pollJob(jobId) {
   const deadline = performance.now() + POLL_TIMEOUT_MS;
   for (;;) {
     const job = await api.getJob(jobId);
     if (TERMINAL.has(job.status)) return job;
-    setStatus(job.status === "running" ? "Transcrevendo…" : "Na fila…", "busy");
+    setStatus(jobPhaseText(job), "busy");
     if (performance.now() > deadline) throw new Error("Tempo limite excedido ao transcrever.");
     await sleep(POLL_INTERVAL_MS);
   }
@@ -324,10 +347,59 @@ async function copyTranscript() {
 
 // --- configurações ----------------------------------------------------------
 
-function renderSettingChips() {
-  $("chip-model").textContent = state.settings.model || "—";
-  $("chip-language").textContent = state.settings.language || "—";
-  $("profile").value = state.settings.default_profile || "literal";
+const LANGUAGES = {
+  pt: "Português",
+  en: "Inglês",
+  es: "Espanhol",
+  fr: "Francês",
+  it: "Italiano",
+  de: "Alemão",
+  ja: "Japonês",
+  zh: "Chinês",
+  ru: "Russo",
+  ar: "Árabe",
+  hi: "Hindi",
+};
+
+/** Preenche os três selects da tela Ditar e sincroniza o estado atual. */
+function renderQuickSettings() {
+  const model = $("quick-model");
+  if (model) {
+    const current = state.settings.model || "";
+    model.replaceChildren();
+    for (const name of state.settings.allowed_models || []) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      model.append(option);
+    }
+    if (current && ![...model.options].some((option) => option.value === current)) {
+      const option = document.createElement("option");
+      option.value = current;
+      option.textContent = current;
+      model.prepend(option);
+    }
+    model.value = current;
+  }
+
+  const language = $("quick-language");
+  if (language) {
+    const current = state.settings.language || "pt";
+    const codes = Object.keys(LANGUAGES);
+    // Código fora da lista (posto nas Configurações) continua selecionável.
+    if (!codes.includes(current)) codes.unshift(current);
+    language.replaceChildren();
+    for (const code of codes) {
+      const option = document.createElement("option");
+      option.value = code;
+      option.textContent = LANGUAGES[code] ? `${LANGUAGES[code]} (${code})` : code;
+      language.append(option);
+    }
+    language.value = current;
+  }
+
+  const profile = $("profile");
+  if (profile) profile.value = state.settings.default_profile || "literal";
 }
 
 async function loadSettings() {
@@ -346,7 +418,7 @@ async function loadSettings() {
   if ($("default-profile")) $("default-profile").value = settings.default_profile;
   renderProfileOptions();
   $("week-start").value = settings.week_start;
-  renderSettingChips();
+  renderQuickSettings();
   renderKeyBadge(settings.api_key_configured);
 }
 
@@ -363,8 +435,9 @@ async function saveSetting(changes) {
   try {
     const updated = await api.patchSettings(changes);
     state.settings = { ...state.settings, ...updated };
-    renderSettingChips();
+    renderQuickSettings();
     state.loaded.delete("activity");
+    state.loaded.delete("settings");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1175,6 +1248,12 @@ function bindEvents() {
   });
 
   $("model").addEventListener("change", () => saveSetting({ model: $("model").value }));
+  $("quick-model").addEventListener("change", () =>
+    saveSetting({ model: $("quick-model").value })
+  );
+  $("quick-language").addEventListener("change", () =>
+    saveSetting({ language: $("quick-language").value })
+  );
   $("profile").addEventListener("change", async () => {
     await saveSetting({ default_profile: $("profile").value });
     renderProfilesList();

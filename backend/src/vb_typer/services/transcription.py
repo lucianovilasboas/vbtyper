@@ -179,6 +179,7 @@ class TranscriptionService:
             now = local_stamp()
             if job.cancel_requested:
                 job.status = JobStatus.CANCELED
+                job.phase = ""
                 job.finished_at = now
                 job.updated_at = now
                 self.audio_store.delete(job.audio_path)
@@ -186,6 +187,7 @@ class TranscriptionService:
                 session.commit()
                 return None
             job.status = JobStatus.RUNNING
+            job.phase = "transcribing"
             job.started_at = now
             job.updated_at = now
             context = JobContext(
@@ -201,6 +203,16 @@ class TranscriptionService:
             )
             session.commit()
             return context
+
+    def set_phase(self, job_id: str, phase: str) -> None:
+        """Sub-fase do job ("transcribing", "rendering"), para o cliente ver."""
+        with self.session_factory() as session:
+            job = self.jobs.get(session, job_id)
+            if job is None or job.status in TERMINAL_STATUSES:
+                return
+            job.phase = phase
+            job.updated_at = local_stamp()
+            session.commit()
 
     def read_audio(self, context: JobContext) -> bytes:
         if context.audio_path is None or not context.audio_path.is_file():
@@ -260,6 +272,7 @@ class TranscriptionService:
                 )
             job.transcription_id = row.id
             job.status = JobStatus.SUCCEEDED
+            job.phase = ""
             job.finished_at = local_stamp()
             job.updated_at = job.finished_at
             job.error = None
@@ -288,6 +301,7 @@ class TranscriptionService:
                 self.transcriptions.add(session, row)
                 job.transcription_id = row.id
             job.status = JobStatus.FAILED
+            job.phase = ""
             job.finished_at = local_stamp()
             job.updated_at = job.finished_at
             job.error = error
@@ -310,6 +324,7 @@ class TranscriptionService:
                 return job
             now = local_stamp()
             job.status = JobStatus.FAILED
+            job.phase = ""
             job.finished_at = now
             job.updated_at = now
             job.error = reason
@@ -327,6 +342,7 @@ class TranscriptionService:
                 return job
             now = local_stamp()
             job.status = JobStatus.CANCELED
+            job.phase = ""
             job.finished_at = now
             job.updated_at = now
             job.error = job.error or reason
