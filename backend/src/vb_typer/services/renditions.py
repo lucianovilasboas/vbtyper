@@ -20,6 +20,7 @@ from vb_typer.domain.profiles import compose_instructions, is_literal
 from vb_typer.services.common import words_of
 from vb_typer.services.history import HistoryService
 from vb_typer.services.profiles import ProfileService
+from vb_typer.services.settings import SettingsService
 
 
 class RenditionService:
@@ -31,6 +32,7 @@ class RenditionService:
         secrets: SecretsAdapter,
         history: HistoryService,
         profiles: ProfileService,
+        settings_service: SettingsService,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
@@ -38,6 +40,7 @@ class RenditionService:
         self.secrets = secrets
         self.history = history
         self.profiles = profiles
+        self.settings_service = settings_service
 
     def versions(self, transcription_id: int) -> list[TranscriptionVersion]:
         with self.session_factory() as session:
@@ -62,15 +65,17 @@ class RenditionService:
         if not source:
             raise DomainError("Este ditado não tem texto para transformar.", code="empty_text")
 
+        # O modelo do perfil manda; sem ele, vale o padrão das configurações.
+        model = profile.model or self.settings_service.smart_model_now()
         text, usage = await self.openai.normalize(
             text=source,
-            model=self.settings.smart_model,
+            model=model,
             instructions=compose_instructions(profile),
             api_key=self.secrets.get_api_key(),
         )
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
         completion_tokens = int(usage.get("completion_tokens") or 0)
-        cost = text_cost_usd(self.settings.smart_model, prompt_tokens, completion_tokens)
+        cost = text_cost_usd(model, prompt_tokens, completion_tokens)
 
         with self.session_factory() as session:
             stored = session.get(Transcription, transcription_id)
@@ -81,7 +86,7 @@ class RenditionService:
                     transcription_id=transcription_id,
                     profile=profile.slug,
                     text=text,
-                    model=self.settings.smart_model,
+                    model=model,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     cost_usd=cost,

@@ -51,6 +51,8 @@ class ProfileSpec:
     hint: str | None = None
     options: dict = field(default_factory=dict)
     builtin: bool = True
+    # Modelo de texto deste perfil; ``None`` usa o padrão das configurações.
+    model: str | None = None
 
 
 _REVISED = """\
@@ -221,9 +223,14 @@ CONCISION_LABEL = {"curto": "curta", "normal": "normal", "detalhado": "detalhada
 
 
 def compose_instructions(profile: ProfileSpec) -> str:
-    """Regras comuns + instruções do perfil + ajustes de estilo."""
+    """Regras comuns + o que o perfil faz + itens do usuário + estilo."""
     parts = [BASE_RULES.strip(), profile.instructions.strip()]
     options = profile.options or {}
+
+    items = [str(item).strip() for item in options.get("items") or [] if str(item).strip()]
+    if items:
+        parts.append("Regras deste perfil:\n" + "\n".join(f"- {item}" for item in items))
+
     style: list[str] = []
     if options.get("tom") in TOM_LABEL:
         style.append(f"tom {TOM_LABEL[options['tom']]}")

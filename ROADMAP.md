@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 21/10/2026 — tudo em `v0.12.1` (backend: 121 testes; desktop:
+Última atualização: 21/10/2026 — tudo em `v0.13.0` (backend: 129 testes; desktop:
 169 testes).
 
 ---
@@ -63,15 +63,18 @@ ficam para depois.
 linha "Ditando com"; a linha de status acompanha a fase real do job
 (transcrevendo → montando o e-mail → pronto) pela coluna `jobs.phase`.
 
-### Pendente — escolher o modelo do ajuste
+### Modelo do texto e itens de perfil: **feito em `v0.13.0`**
 
-O **custo por versão já aparece** (feito junto com os perfis: o `usage` do chat é
-capturado, com a tabela de texto em `domain/pricing.py`). Falta tornar o
-**modelo do ajuste** selecionável: hoje ele vem de `smart_model` do ambiente
-(`gpt-4o-mini`) e não está em `/api/v1/settings`. Referência para uma fala de
-20 s: transcrição US$ 0,0010; ajuste com `gpt-4o-mini` ≈ US$ 0,00006; com
-`gpt-4o` ≈ US$ 0,0011 (o ditado inteiro). O worker deve ler o modelo da
-configuração, não do ambiente.
+O modelo da segunda etapa deixou de vir só do ambiente: `app_settings.smart_model`
+(migração `0006`) é exposto e aceito em `/settings`, com a lista de autorizados e
+**o preço por 1M ao lado de cada opção**. Cada perfil pode fixar o seu modelo
+(`options.modelo`), que vence o global. A resolução passou a ler o banco nos dois
+caminhos (worker e render); o custo da versão já usava o modelo efetivo.
+
+Perfis personalizados ganharam **regras/itens** (`options.items`, até 12), que
+entram no prompt como bloco próprio ("Regras deste perfil") — o usuário define a
+ação e as restrições sem escrever um prompt inteiro. Os quatro modelos de texto
+foram verificados na API real (21/10/2026).
 
 ### Estruturado: pendente, e é o que falta decidir
 

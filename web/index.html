@@ -249,6 +249,10 @@
               <select id="default-profile"></select>
             </div>
             <div class="field-row">
+              <div>Modelo do texto<span>Usado na segunda etapa (perfis). Só afeta ditados com perfil diferente de "Transcrição fiel".</span></div>
+              <select id="smart-model"></select>
+            </div>
+            <div class="field-row">
               <div>Início da semana<span>Como as semanas são agrupadas no histórico e nas estatísticas.</span></div>
               <select id="week-start">
                 <option value="monday">Segunda-feira</option>
@@ -279,8 +283,20 @@
             <div class="profile-editor" id="profile-editor" hidden>
               <input id="profile-name" type="text" maxlength="60" placeholder="Nome do perfil" autocomplete="off">
               <textarea id="profile-instructions" maxlength="8000"
-                        placeholder="Instruções: o que fazer com o texto ditado. Ex.: organize em tópicos, sem inventar."></textarea>
+                        placeholder="O que este perfil faz: ex. organize em tópicos, sem inventar decisões."></textarea>
+              <div class="profile-items">
+                <div class="profile-items-head">Regras deste perfil</div>
+                <div class="items-list" id="profile-items"></div>
+                <div class="items-add">
+                  <input id="profile-item-input" type="text" maxlength="200"
+                         placeholder="ex.: não usar emojis" autocomplete="off">
+                  <button id="profile-item-add" class="ghost" type="button">Adicionar</button>
+                </div>
+              </div>
               <div class="profile-options">
+                <label>Modelo do texto
+                  <select id="profile-model"></select>
+                </label>
                 <label>Tom
                   <select id="profile-tone">
                     <option value="">padrão</option>

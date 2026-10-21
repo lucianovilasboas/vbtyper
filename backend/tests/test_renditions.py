@@ -116,3 +116,105 @@ async def test_render_unknown_profile_is_not_found(client, auth, container):
     )
 
     assert response.status_code == 404
+
+
+async def test_render_uses_the_configured_text_model(
+    client, auth, container, with_api_key, respx_mock
+):
+    """O modelo vem das configurações (banco), não do ambiente."""
+    await client.patch("/api/v1/settings", headers=auth, json={"smart_model": "gpt-4.1-mini"})
+    row = _row(container)
+    route = respx_mock.post(CHAT).mock(return_value=_chat("novo"))
+
+    response = await client.post(
+        f"{ENDPOINT}/{row.id}/render", headers=auth, json={"profile": "email"}
+    )
+
+    assert response.status_code == 200
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["model"] == "gpt-4.1-mini"
+    assert response.json()["versions"][0]["model"] == "gpt-4.1-mini"
+
+
+async def test_profile_model_overrides_the_global(
+    client, auth, container, with_api_key, respx_mock
+):
+    await client.patch("/api/v1/settings", headers=auth, json={"smart_model": "gpt-4o-mini"})
+    profile = (
+        await client.post(
+            "/api/v1/profiles",
+            headers=auth,
+            json={
+                "name": "Caro",
+                "instructions": "Organize em tópicos, sem inventar.",
+                "options": {"modelo": "gpt-4o"},
+            },
+        )
+    ).json()
+    row = _row(container)
+    route = respx_mock.post(CHAT).mock(return_value=_chat("ok"))
+
+    response = await client.post(
+        f"{ENDPOINT}/{row.id}/render", headers=auth, json={"profile": profile["slug"]}
+    )
+
+    assert response.status_code == 200
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["model"] == "gpt-4o"
+    assert response.json()["versions"][0]["model"] == "gpt-4o"
+
+
+async def test_items_are_composed_into_the_prompt(
+    client, auth, container, with_api_key, respx_mock
+):
+    profile = (
+        await client.post(
+            "/api/v1/profiles",
+            headers=auth,
+            json={
+                "name": "Com regras",
+                "instructions": "Reescreva o texto para uma mensagem.",
+                "options": {"items": ["não usar emojis", "máximo 5 linhas"]},
+            },
+        )
+    ).json()
+    row = _row(container)
+    route = respx_mock.post(CHAT).mock(return_value=_chat("ok"))
+
+    await client.post(
+        f"{ENDPOINT}/{row.id}/render", headers=auth, json={"profile": profile["slug"]}
+    )
+
+    system = json.loads(route.calls.last.request.content)["messages"][0]["content"]
+    assert "não usar emojis" in system
+    assert "máximo 5 linhas" in system
+
+
+async def test_profile_with_invalid_model_is_rejected(client, auth):
+    response = await client.post(
+        "/api/v1/profiles",
+        headers=auth,
+        json={
+            "name": "Modelo errado",
+            "instructions": "Instruções suficientes para o perfil.",
+            "options": {"modelo": "nao-existe"},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_smart_model"
+
+
+async def test_too_many_items_are_rejected(client, auth):
+    response = await client.post(
+        "/api/v1/profiles",
+        headers=auth,
+        json={
+            "name": "Itens demais",
+            "instructions": "Instruções suficientes para o perfil.",
+            "options": {"items": [f"regra {index}" for index in range(13)]},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "too_many_items"

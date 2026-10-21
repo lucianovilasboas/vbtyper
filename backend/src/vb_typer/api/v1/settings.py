@@ -7,9 +7,15 @@ import asyncio
 from fastapi import APIRouter, status
 
 from vb_typer.api.deps import ContainerDep
+from vb_typer.domain.pricing import DEFAULT_TEXT_PRICING, TEXT_PRICING_PER_MILLION
 from vb_typer.schemas.settings import ConnectionTestResult, SettingsRead, SettingsUpdate
 
 router = APIRouter(prefix="/settings", tags=["configuração"])
+
+
+def _text_prices(models: tuple[str, ...] | list[str]) -> dict[str, list[float]]:
+    """Preço (entrada, saída) por 1M de tokens — a tabela do domínio é a fonte."""
+    return {name: list(TEXT_PRICING_PER_MILLION.get(name, DEFAULT_TEXT_PRICING)) for name in models}
 
 
 def _read(container: ContainerDep) -> SettingsRead:
@@ -19,6 +25,9 @@ def _read(container: ContainerDep) -> SettingsRead:
         language=row.language,
         mode=row.mode,
         default_profile=row.default_profile,
+        smart_model=row.smart_model,
+        allowed_smart_models=list(container.settings.allowed_smart_models),
+        text_prices=_text_prices(container.settings.allowed_smart_models),
         week_start=row.week_start,
         api_key_configured=container.transcription.api_key_present(),
         allowed_models=list(container.settings.allowed_models),
@@ -38,6 +47,7 @@ def update_settings(payload: SettingsUpdate, container: ContainerDep) -> Setting
         language=payload.language,
         mode=payload.mode,
         default_profile=payload.default_profile,
+        smart_model=payload.smart_model,
         week_start=payload.week_start,
     )
     return _read(container)

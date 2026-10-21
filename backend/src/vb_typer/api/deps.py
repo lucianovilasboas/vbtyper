@@ -56,7 +56,8 @@ def build_container(settings: AppSettings, paths: AppPaths) -> Container:
         paths.audio_dir, settings.max_upload_bytes, settings.allowed_content_types
     )
     openai = OpenAIAdapter(settings.openai_base_url, settings.openai_timeout_s)
-    profiles = ProfileService(session_factory)
+    settings_service = SettingsService(session_factory, settings)
+    profiles = ProfileService(session_factory, settings)
     history = HistoryService(session_factory, settings, audio_store)
     return Container(
         settings=settings,
@@ -68,9 +69,11 @@ def build_container(settings: AppSettings, paths: AppPaths) -> Container:
         openai=openai,
         history=history,
         stats=StatsService(session_factory, settings),
-        settings_service=SettingsService(session_factory, settings),
+        settings_service=settings_service,
         profiles=profiles,
-        renditions=RenditionService(session_factory, settings, openai, secrets, history, profiles),
+        renditions=RenditionService(
+            session_factory, settings, openai, secrets, history, profiles, settings_service
+        ),
         transcription=TranscriptionService(
             session_factory, settings, audio_store, secrets, profiles
         ),

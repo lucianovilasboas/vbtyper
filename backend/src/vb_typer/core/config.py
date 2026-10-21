@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Modelos aceitos pelo domínio. A lista de preços fica em `vb_typer.services.stats`.
 DEFAULT_ALLOWED_MODELS = ("gpt-4o-mini-transcribe", "gpt-transcribe")
+# Modelos de texto (segunda etapa, dos perfis). Verificados na API em 21/10/2026.
+DEFAULT_ALLOWED_SMART_MODELS = ("gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1")
 DEFAULT_ALLOWED_CONTENT_TYPES = (
     "audio/wav",
     "audio/x-wav",
@@ -100,6 +102,8 @@ class AppSettings(BaseSettings):
     default_mode: str = "literal"
     # Modelo do ajuste do modo inteligente (só texto, então é outro modelo).
     smart_model: str = "gpt-4o-mini"
+    # Modelos de texto autorizados; o padrão fica em `smart_model`.
+    allowed_smart_models: CsvTuple = DEFAULT_ALLOWED_SMART_MODELS
     keep_audio: bool = True
     week_start: str = "monday"
 
@@ -111,6 +115,7 @@ class AppSettings(BaseSettings):
         "cors_origins",
         "allowed_models",
         "allowed_content_types",
+        "allowed_smart_models",
         mode="before",
     )
     @classmethod
