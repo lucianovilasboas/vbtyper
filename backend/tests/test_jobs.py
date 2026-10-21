@@ -291,3 +291,24 @@ def test_set_phase_is_visible_and_ignored_after_the_end(container, make_wav):
     # Job terminal não muda mais de fase.
     container.transcription.set_phase(job.id, "rendering")
     assert container.transcription.get(job.id).phase == ""
+
+
+def test_invalid_default_profile_falls_back_to_literal(container, make_wav):
+    """Valor legado inválido no padrão nunca impede o ditado."""
+    from vb_typer.db.models import AppSetting
+
+    container.settings_service.current()  # garante a linha id=1
+    with container.session_factory() as session:
+        row = session.get(AppSetting, 1)
+        row.default_profile = "smart"  # valor que a 0003 deixava para quem usava o modo smart
+        session.commit()
+
+    job = container.transcription.create_job(
+        data=make_wav(0.5),
+        filename="a.wav",
+        content_type="audio/wav",
+        model=None,
+        language="pt",
+    )
+
+    assert job.profile == "literal"

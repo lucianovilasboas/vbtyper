@@ -6,6 +6,7 @@ OpenAI fica em ``vb_typer.workers.manager``.
 
 from __future__ import annotations
 
+import logging
 import math
 import uuid
 from dataclasses import dataclass
@@ -26,6 +27,8 @@ from vb_typer.repositories.jobs import JobRepository
 from vb_typer.repositories.transcriptions import TranscriptionRepository
 from vb_typer.services.common import new_transcription
 from vb_typer.services.profiles import ProfileService
+
+logger = logging.getLogger("vb_typer.transcription")
 
 
 def _duration_or_hint(probed: float, hint: float | None, limit: float) -> float:
@@ -148,7 +151,13 @@ class TranscriptionService:
         with self.session_factory() as session:
             row = session.get(AppSetting, 1)
             default = row.default_profile if row is not None else self.settings.default_mode
-        return self.profiles.get(default).slug
+        try:
+            return self.profiles.get(default).slug
+        except NotFoundError:
+            # Um padrão inválido (herança de versão antiga) nunca pode impedir
+            # o ditado: cai no literal e segue.
+            logger.warning("Perfil padrão %r não existe; usando literal.", default)
+            return LITERAL_SLUG
 
     # --- leitura -----------------------------------------------------------
     def get(self, job_id: str) -> Job:
