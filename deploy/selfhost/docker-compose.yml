@@ -1,0 +1,63 @@
+# =====================================================================
+# VB Typer 2.0 — instalação self-hosted (uma instância por pessoa)
+# ---------------------------------------------------------------------
+# Uso normal: ./install.sh   (gera o .env, sobe a API e o Caddy)
+#
+# Modo público (padrão): Caddy na frente, TLS automático para o seu domínio.
+# Modo local (--local): só a API em 127.0.0.1, sem domínio nem TLS.
+#
+# A API publica em loopback mesmo no modo público: o Caddy a alcança pela
+# rede do compose, e a porta fica inacessível de fora.
+# =====================================================================
+
+name: vbtyper
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  api:
+    container_name: vbtyper_api
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: vb-typer-api:latest
+    restart: unless-stopped
+    logging: *default-logging
+    env_file:
+      - .env
+    volumes:
+      # Banco (vb-typer.db) e áudios (audio/) — sem volume, cada "up" perde tudo.
+      - vb-typer-data:/data
+    ports:
+      - "127.0.0.1:${VB_TYPER_LOCAL_PORT:-8765}:8765"
+
+  caddy:
+    container_name: vbtyper_caddy
+    image: caddy:2
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - public
+    depends_on:
+      - api
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  vb-typer-data:
+    name: vb-typer-data
+  caddy-data:
+    name: vbtyper-caddy-data
+  caddy-config:
+    name: vbtyper-caddy-config

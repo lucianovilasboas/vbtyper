@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 21/10/2026 — tudo em `v0.13.0` (backend: 129 testes; desktop:
+Última atualização: 21/10/2026 — tudo em `v0.14.0` (backend: 129 testes; desktop:
 169 testes).
 
 ---
@@ -327,6 +327,18 @@ código); `Secure` no cookie de sessão sob TLS; limite de tentativas de acesso.
 Melhoria sugerida: aceitar como origem o próprio `Host` quando ele passar em
 `allowed_hosts` — hoje o endereço precisa ser repetido em `CORS_ORIGINS`, senão o
 webapp leva 403 ao ditar.
+
+### Self-hosted: **feito em `v0.14.0`** (alternativa ao SaaS)
+
+`deploy/selfhost/` instala uma instância por pessoa com um comando: compose
+próprio (sem depender do Traefik), **Caddy** com TLS automático e Basic Auth na
+interface, e `install.sh` que pergunta domínio/chave/fuso e gera o token e a
+senha. `/api`, `/static`, `/sw.js` e o manifest ficam fora do Basic (o service
+worker precisa), como no Traefik. O modo `--local` publica só em `127.0.0.1`.
+
+Verificado: 401/200 na frente do Caddy, API e service worker públicos, e o hash
+bcrypt chegando intacto — o `env_file` do compose interpola `$`, então o
+instalador dobra os cifrões.
 
 ### Etapa 2 — identidade e separação por conta
 

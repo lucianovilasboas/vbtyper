@@ -1,0 +1,23 @@
+# Caddy na frente do VB Typer.
+#
+# - `/api`, `/sw.js`, o manifest e os estáticos ficam fora do Basic Auth: são
+#   código e ícones públicos, e o navegador busca o service worker sem a
+#   credencial em alguns caminhos (o registro falharia com 401).
+# - Todo o resto (a página que entrega o cookie de sessão) pede usuário/senha.
+#
+# `VB_URL` e as credenciais vêm do `.env` (env do contêiner).
+{$VB_URL} {
+	@open path /api/* /sw.js /manifest.webmanifest /static/*
+	handle @open {
+		reverse_proxy api:8765
+	}
+
+	handle {
+		basic_auth {
+			{$VB_TYPER_BASIC_USER} {$VB_TYPER_BASIC_HASH}
+		}
+		reverse_proxy api:8765
+	}
+
+	encode zstd gzip
+}
