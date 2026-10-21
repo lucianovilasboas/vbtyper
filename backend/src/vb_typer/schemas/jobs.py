@@ -20,6 +20,7 @@ class JobRead(ORMModel):
     model: str
     language: str
     mode: str
+    profile: str
     filename: str
     content_type: str
     size_bytes: int

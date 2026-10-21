@@ -275,6 +275,24 @@ details.raw p { margin: 6px 0 0; }
 .theme-help { color: var(--muted); font-size: 0.82rem; }
 .hotkey { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
 .key { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 7px; padding: 3px 9px; background: var(--panel-2); font-size: 0.8rem; font-weight: 600; }
+select.key { padding: 3px 6px; color: var(--ink); }
+
+/* --------------------------------------------------------------- perfis */
+
+.profiles-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.profile-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.profile-row:last-child { border-bottom: 0; }
+.profile-name { font-weight: 600; }
+.profile-row .actions { display: flex; gap: 6px; margin-top: 0; }
+.profile-row button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 4px 9px; color: var(--muted); font-size: 0.76rem; }
+.profile-row button:hover { background: var(--panel-2); color: var(--ink); }
+.profile-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.profile-editor textarea { min-height: 120px; font-size: 0.9rem; }
+.profile-options { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 0.85rem; color: var(--muted); }
+.profile-options select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: var(--panel-2); }
+.profile-options .check { display: inline-flex; align-items: center; gap: 6px; }
+.versions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.versions select { border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; background: var(--panel-2); font-size: 0.76rem; max-width: 100%; }
 .ok-text { color: var(--green); font-weight: 600; }
 .bad-text { color: var(--red); font-weight: 600; }
 

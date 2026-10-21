@@ -13,9 +13,11 @@ from vb_typer.core.timeutil import iso_stamp, normalize_bound
 from vb_typer.db.models import Transcription
 from vb_typer.domain.pricing import cost_usd
 from vb_typer.schemas.transcriptions import (
+    RenderRequest,
     TranscriptionInsertPatch,
     TranscriptionPage,
     TranscriptionRead,
+    transcription_read,
 )
 
 router = APIRouter(prefix="/transcriptions", tags=["histórico"])
@@ -121,7 +123,23 @@ def export_csv(
 
 @router.get("/{transcription_id}", response_model=TranscriptionRead)
 def get_transcription(transcription_id: int, container: ContainerDep) -> TranscriptionRead:
-    return TranscriptionRead.model_validate(container.history.get(transcription_id))
+    row = container.history.get(transcription_id)
+    return transcription_read(row, container.renditions.versions(transcription_id))
+
+
+@router.post("/{transcription_id}/render", response_model=TranscriptionRead)
+async def render_transcription(
+    transcription_id: int,
+    payload: RenderRequest,
+    container: ContainerDep,
+) -> TranscriptionRead:
+    """Gera outra versão a partir do texto reconhecido, com o perfil pedido.
+
+    Síncrono de propósito: é uma chamada de texto (1–3 s) e o usuário está
+    olhando a tela. Falha não altera o texto atual.
+    """
+    row = await container.renditions.render(transcription_id, payload.profile)
+    return transcription_read(row, container.renditions.versions(transcription_id))
 
 
 @router.patch("/{transcription_id}", response_model=TranscriptionRead)

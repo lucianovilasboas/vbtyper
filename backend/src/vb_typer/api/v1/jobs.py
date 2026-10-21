@@ -47,6 +47,7 @@ async def create_job(
     model: Annotated[str | None, Form()] = None,
     language: Annotated[str | None, Form()] = None,
     mode: Annotated[str | None, Form()] = None,
+    profile: Annotated[str | None, Form()] = None,
     duration_s: Annotated[float | None, Form(description="Duração medida pelo cliente.")] = None,
 ) -> JobRead:
     data = await _read_upload(file, container.settings.max_upload_bytes)
@@ -58,6 +59,7 @@ async def create_job(
         model=model,
         language=language,
         mode=mode,
+        profile=profile,
         duration_s=duration_s,
     )
     await manager.submit(job.id)

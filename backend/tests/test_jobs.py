@@ -214,3 +214,41 @@ async def test_absurd_duration_hint_is_ignored(
     assert response.status_code == 202
     assert response.json()["duration_s"] == 0.0
     await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+
+
+async def test_job_with_profile_creates_a_version(
+    client, auth, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Perfil editorial: a segunda chamada vira versão, com custo e texto cru."""
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "Oi Rafael, verifica o erro."})
+    )
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Assunto: erro\n\nOi Rafael..."}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 40},
+            },
+        )
+    )
+    files = {"file": ("gravacao.wav", make_wav(0.5), "audio/wav")}
+
+    response = await client.post(ENDPOINT, headers=auth, files=files, data={"profile": "email"})
+
+    assert response.status_code == 202
+    created = response.json()
+    assert created["profile"] == "email"
+
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+    result = job["result"]
+    assert result["profile"] == "email"
+    assert result["raw_text"] == "Oi Rafael, verifica o erro."
+    assert result["text"].startswith("Assunto:")
+
+    detail = await client.get(f"/api/v1/transcriptions/{result['id']}", headers=auth)
+    versions = detail.json()["versions"]
+    assert len(versions) == 1
+    assert versions[0]["profile"] == "email"
+    assert versions[0]["prompt_tokens"] == 50
+    assert versions[0]["cost_usd"] > 0

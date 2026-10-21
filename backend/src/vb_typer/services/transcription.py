@@ -17,12 +17,15 @@ from vb_typer.adapters.audio_store import AudioStore
 from vb_typer.adapters.secrets import SecretsAdapter
 from vb_typer.core.config import TRANSCRIPTION_MODES, AppSettings
 from vb_typer.core.timeutil import local_stamp
-from vb_typer.db.models import AppSetting, Job
-from vb_typer.domain.enums import TERMINAL_STATUSES, JobStatus
+from vb_typer.db.models import AppSetting, Job, TranscriptionVersion
+from vb_typer.domain.enums import TERMINAL_STATUSES, JobStatus, TranscriptionMode
 from vb_typer.domain.errors import DomainError, InvalidModelError, NotFoundError
+from vb_typer.domain.pricing import text_cost_usd
+from vb_typer.domain.profiles import LITERAL_SLUG, REVISED_SLUG, is_literal
 from vb_typer.repositories.jobs import JobRepository
 from vb_typer.repositories.transcriptions import TranscriptionRepository
 from vb_typer.services.common import new_transcription
+from vb_typer.services.profiles import ProfileService
 
 
 def _duration_or_hint(probed: float, hint: float | None, limit: float) -> float:
@@ -55,6 +58,7 @@ class JobContext:
     model: str
     language: str
     mode: str
+    profile: str
     duration_s: float
     audio_path: Path | None
 
@@ -66,11 +70,13 @@ class TranscriptionService:
         settings: AppSettings,
         audio_store: AudioStore,
         secrets: SecretsAdapter,
+        profiles: ProfileService,
     ) -> None:
         self.session_factory = session_factory
         self.settings = settings
         self.audio_store = audio_store
         self.secrets = secrets
+        self.profiles = profiles
         self.jobs = JobRepository()
         self.transcriptions = TranscriptionRepository()
 
@@ -84,6 +90,7 @@ class TranscriptionService:
         model: str | None,
         language: str | None,
         mode: str | None = None,
+        profile: str | None = None,
         duration_s: float | None = None,
     ) -> Job:
         if model and model not in self.settings.allowed_models:
@@ -96,16 +103,12 @@ class TranscriptionService:
 
         stored = self.audio_store.save(data, content_type, filename)
         duration = _duration_or_hint(stored.duration_s, duration_s, self.settings.max_audio_seconds)
+        chosen_profile = self._resolve_profile(profile=profile, mode=mode)
+        chosen_mode = (
+            TranscriptionMode.LITERAL if is_literal(chosen_profile) else TranscriptionMode.SMART
+        )
         now = local_stamp()
         with self.session_factory() as session:
-            # O modo padrão é a escolha do usuário na interface, não a do ambiente:
-            # é ele que decide se o ditado sai literal ou ajustado.
-            chosen = (mode or self._default_mode(session)).strip().lower()
-            if chosen not in TRANSCRIPTION_MODES:
-                raise DomainError(
-                    f"Modo inválido. Use um de: {', '.join(TRANSCRIPTION_MODES)}.",
-                    code="invalid_mode",
-                )
             job = Job(
                 id=uuid.uuid4().hex,
                 status=JobStatus.QUEUED,
@@ -113,7 +116,8 @@ class TranscriptionService:
                 updated_at=now,
                 model=model or self.settings.default_model,
                 language=language,
-                mode=chosen,
+                mode=chosen_mode,
+                profile=chosen_profile,
                 filename=stored.filename,
                 content_type=stored.content_type,
                 size_bytes=stored.size,
@@ -125,9 +129,26 @@ class TranscriptionService:
             session.refresh(job)
             return job
 
-    def _default_mode(self, session: Session) -> str:
-        row = session.get(AppSetting, 1)
-        return row.mode if row is not None else self.settings.default_mode
+    def _resolve_profile(self, *, profile: str | None, mode: str | None) -> str:
+        """Perfil do job: escolhido > modo legado > padrão das configurações.
+
+        O ``mode`` continua aceito porque o cliente desktop ainda manda
+        ``literal``/``smart``; ele é traduzido para o perfil correspondente.
+        """
+        if profile:
+            return self.profiles.get(profile.strip().lower()).slug
+        if mode:
+            normalized = mode.strip().lower()
+            if normalized not in TRANSCRIPTION_MODES:
+                raise DomainError(
+                    f"Modo inválido. Use um de: {', '.join(TRANSCRIPTION_MODES)}.",
+                    code="invalid_mode",
+                )
+            return LITERAL_SLUG if normalized == "literal" else REVISED_SLUG
+        with self.session_factory() as session:
+            row = session.get(AppSetting, 1)
+            default = row.default_profile if row is not None else self.settings.default_mode
+        return self.profiles.get(default).slug
 
     # --- leitura -----------------------------------------------------------
     def get(self, job_id: str) -> Job:
@@ -174,6 +195,7 @@ class TranscriptionService:
                 model=job.model,
                 language=job.language,
                 mode=job.mode,
+                profile=job.profile,
                 duration_s=job.duration_s,
                 audio_path=Path(job.audio_path) if job.audio_path else None,
             )
@@ -194,16 +216,21 @@ class TranscriptionService:
         transcribe_ms: int,
         raw_text: str | None = None,
         mode: str | None = None,
+        profile: str | None = None,
+        usage: dict | None = None,
+        text_model: str | None = None,
     ) -> Job:
         with self.session_factory() as session:
             job = self.jobs.get(session, job_id)
             if job is None:
                 raise NotFoundError("Job não encontrado.")
             keep = self.settings.keep_audio
+            delivered_profile = profile or job.profile
             row = new_transcription(
                 text=text,
                 raw_text=raw_text if raw_text is not None else text,
                 mode=mode or job.mode,
+                profile=delivered_profile,
                 duration_s=duration_s,
                 model=job.model,
                 language=job.language,
@@ -213,6 +240,24 @@ class TranscriptionService:
                 inserted=False,
             )
             self.transcriptions.add(session, row)
+            # Só há versão quando a segunda chamada aconteceu de fato: o texto
+            # pulado pelo filtro do "revisado" é o próprio reconhecido.
+            if usage is not None:
+                prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                completion_tokens = int(usage.get("completion_tokens") or 0)
+                model = text_model or self.settings.smart_model
+                session.add(
+                    TranscriptionVersion(
+                        transcription_id=row.id,
+                        profile=delivered_profile,
+                        text=text,
+                        model=model,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        cost_usd=text_cost_usd(model, prompt_tokens, completion_tokens),
+                        created_at=row.created_at,
+                    )
+                )
             job.transcription_id = row.id
             job.status = JobStatus.SUCCEEDED
             job.finished_at = local_stamp()

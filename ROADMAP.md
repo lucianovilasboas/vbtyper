@@ -80,6 +80,22 @@ transcrição. Escolher o modelo no escuro é escolher o gasto no escuro.
 
 - `app_settings.smart_model` (migração), com `allowed_smart_models` na
   configuração, no padrão do `model`/`allowed_models` que já existe;
+- `/settings` passa a **expor** `smart_momporta** (números de referência para uma fala de 20 s, ~60
+palavras; tarifas públicas, sujeitas a mudança — conferir na implementação):
+
+| Etapa | Custo |
+|---|---|
+| Transcrição (`gpt-4o-mini-transcribe`, US$ 0,003/min) | US$ 0,0010 |
+| Ajuste com `gpt-4o-mini` (~80 tokens entrada + ~85 saída) | US$ 0,00006 (≈6%) |
+| Ajuste com `gpt-4o` (US$ 2,50/M entrada, US$ 10/M saída) | US$ 0,0011 (**≈ o ditado inteiro**) |
+
+Numa fala curta (5 s) o ajuste com um modelo caro passa de 100% do custo da
+transcrição. Escolher o modelo no escuro é escolher o gasto no escuro.
+
+**Parte 1 — modelo do ajuste selecionável**
+
+- `app_settings.smart_model` (migração), com `allowed_smart_models` na
+  configuração, no padrão do `model`/`allowed_models` que já existe;
 - `/settings` passa a **expor** `smart_model` e a lista, e a **aceitar** a troca
   (validada);
 - **correção embutida:** hoje o worker lê o modelo do ajuste do *ambiente*, não

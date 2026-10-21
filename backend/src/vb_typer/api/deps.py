@@ -19,6 +19,8 @@ from vb_typer.core.security import TOKEN_COOKIE, bearer_token, token_matches
 from vb_typer.db.session import make_engine, make_session_factory
 from vb_typer.domain.errors import UnauthorizedError
 from vb_typer.services.history import HistoryService
+from vb_typer.services.profiles import ProfileService
+from vb_typer.services.renditions import RenditionService
 from vb_typer.services.settings import SettingsService
 from vb_typer.services.stats import StatsService
 from vb_typer.services.transcription import TranscriptionService
@@ -37,6 +39,8 @@ class Container:
     history: HistoryService
     stats: StatsService
     settings_service: SettingsService
+    profiles: ProfileService
+    renditions: RenditionService
     transcription: TranscriptionService
 
     @property
@@ -52,6 +56,8 @@ def build_container(settings: AppSettings, paths: AppPaths) -> Container:
         paths.audio_dir, settings.max_upload_bytes, settings.allowed_content_types
     )
     openai = OpenAIAdapter(settings.openai_base_url, settings.openai_timeout_s)
+    profiles = ProfileService(session_factory)
+    history = HistoryService(session_factory, settings, audio_store)
     return Container(
         settings=settings,
         paths=paths,
@@ -60,10 +66,14 @@ def build_container(settings: AppSettings, paths: AppPaths) -> Container:
         secrets=secrets,
         audio_store=audio_store,
         openai=openai,
-        history=HistoryService(session_factory, settings, audio_store),
+        history=history,
         stats=StatsService(session_factory, settings),
         settings_service=SettingsService(session_factory, settings),
-        transcription=TranscriptionService(session_factory, settings, audio_store, secrets),
+        profiles=profiles,
+        renditions=RenditionService(session_factory, settings, openai, secrets, history, profiles),
+        transcription=TranscriptionService(
+            session_factory, settings, audio_store, secrets, profiles
+        ),
     )
 
 
