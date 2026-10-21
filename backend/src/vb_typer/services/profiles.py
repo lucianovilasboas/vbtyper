@@ -24,6 +24,8 @@ ALLOWED_CONCISION = ("curto", "normal", "detalhado")
 NAME_MIN, NAME_MAX = 2, 60
 INSTRUCTIONS_MIN, INSTRUCTIONS_MAX = 10, 8000
 HINT_MAX = 500
+MAX_ITEMS = 12
+ITEM_MIN, ITEM_MAX = 3, 200
 
 
 def _slugify(name: str) -> str:
@@ -32,8 +34,13 @@ def _slugify(name: str) -> str:
     return (slug or "perfil")[:40]
 
 
-def _clean_options(options: dict[str, Any] | None) -> dict:
-    """Guarda só as chaves conhecidas, com valores conhecidos."""
+def _clean_options(options: dict[str, Any] | None, allowed_models: tuple[str, ...]) -> dict:
+    """Guarda só as chaves conhecidas, com valores válidos.
+
+    - ``tom``/``concisao``/``preservar_termos``: ajustes de estilo;
+    - ``items``: regras curtas escritas pelo usuário, viram um bloco no prompt;
+    - ``modelo``: modelo de texto só deste perfil (vazio = o padrão global).
+    """
     cleaned: dict[str, Any] = {}
     if not isinstance(options, dict):
         return cleaned
@@ -45,23 +52,50 @@ def _clean_options(options: dict[str, Any] | None) -> dict:
         cleaned["concisao"] = concision
     if options.get("preservar_termos") is True:
         cleaned["preservar_termos"] = True
+
+    raw_items = options.get("items")
+    if isinstance(raw_items, list):
+        items = [str(item).strip() for item in raw_items]
+        items = [item for item in items if item]
+        if len(items) > MAX_ITEMS:
+            raise DomainError(f"No máximo {MAX_ITEMS} itens por perfil.", code="too_many_items")
+        for item in items:
+            if not ITEM_MIN <= len(item) <= ITEM_MAX:
+                raise DomainError(
+                    f"Cada item deve ter entre {ITEM_MIN} e {ITEM_MAX} caracteres.",
+                    code="invalid_item",
+                )
+        if items:
+            cleaned["items"] = items
+
+    model = str(options.get("modelo") or "").strip()
+    if model:
+        if model not in allowed_models:
+            raise DomainError(
+                "Modelo de texto inválido. Use um de: " + ", ".join(allowed_models) + ".",
+                code="invalid_smart_model",
+            )
+        cleaned["modelo"] = model
     return cleaned
 
 
 def _to_spec(row: Profile) -> ProfileSpec:
+    options = dict(row.options or {})
     return ProfileSpec(
         slug=row.slug,
         name=row.name,
         instructions=row.instructions,
         hint=row.hint,
-        options=dict(row.options or {}),
+        options=options,
         builtin=False,
+        model=options.get("modelo"),
     )
 
 
 class ProfileService:
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(self, session_factory: sessionmaker[Session], settings) -> None:
         self.session_factory = session_factory
+        self.allowed_models = tuple(settings.allowed_smart_models)
         self.repo = ProfileRepository()
 
     # --- leitura -----------------------------------------------------------
@@ -110,7 +144,7 @@ class ProfileService:
                 name=clean_name,
                 instructions=clean_instructions,
                 hint=clean_hint or None,
-                options=_clean_options(options),
+                options=_clean_options(options, self.allowed_models),
                 created_at=local_stamp(),
                 updated_at=local_stamp(),
             )
@@ -148,7 +182,7 @@ class ProfileService:
                     )
                 row.hint = clean_hint or None
             if options is not None:
-                row.options = _clean_options(options)
+                row.options = _clean_options(options, self.allowed_models)
             row.updated_at = local_stamp()
             session.commit()
             session.refresh(row)

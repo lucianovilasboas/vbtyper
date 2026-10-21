@@ -43,6 +43,7 @@ const state = {
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
   profiles: [],
   profileEditing: null,
+  profileItems: [],
   theme: localStorage.getItem(THEME_KEY) || "auto",
   loaded: new Set(),
   view: "dictate",
@@ -402,6 +403,91 @@ function renderQuickSettings() {
   if (profile) profile.value = state.settings.default_profile || "literal";
 }
 
+const priceFormat = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function modelLabel(name) {
+  const rates = (state.settings.text_prices || {})[name];
+  if (!rates) return name;
+  return `${name} — ${priceFormat.format(rates[0])} / ${priceFormat.format(rates[1])} por 1M`;
+}
+
+/** Modelo de texto: o global (Configurações) e o override por perfil (editor). */
+function renderSmartModelSelects() {
+  const models = state.settings.allowed_smart_models || [];
+  const settingsSelect = $("smart-model");
+  if (settingsSelect) {
+    settingsSelect.replaceChildren();
+    for (const name of models) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = modelLabel(name);
+      settingsSelect.append(option);
+    }
+    settingsSelect.value = state.settings.smart_model || models[0] || "";
+  }
+
+  const profileSelect = $("profile-model");
+  if (profileSelect) {
+    const chosen = profileSelect.value;
+    profileSelect.replaceChildren();
+    const fallback = document.createElement("option");
+    fallback.value = "";
+    fallback.textContent = "padrão (usa o global)";
+    profileSelect.append(fallback);
+    for (const name of models) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = modelLabel(name);
+      profileSelect.append(option);
+    }
+    profileSelect.value = chosen;
+  }
+}
+
+function renderProfileItems() {
+  const host = $("profile-items");
+  if (!host) return;
+  host.replaceChildren();
+  for (const item of state.profileItems) {
+    const chip = document.createElement("span");
+    chip.className = "item-chip";
+    chip.textContent = item;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", `Remover "${item}"`);
+    remove.addEventListener("click", () => {
+      state.profileItems = state.profileItems.filter((entry) => entry !== item);
+      renderProfileItems();
+    });
+    chip.append(remove);
+    host.append(chip);
+  }
+}
+
+function addProfileItem() {
+  const input = $("profile-item-input");
+  const value = input.value.trim();
+  if (!value) return;
+  if (value.length < 3) {
+    setStatus("A regra precisa de pelo menos 3 caracteres.", "error");
+    return;
+  }
+  if (state.profileItems.length >= 12) {
+    setStatus("No máximo 12 regras por perfil.", "error");
+    return;
+  }
+  if (!state.profileItems.includes(value)) state.profileItems.push(value);
+  input.value = "";
+  input.focus();
+  renderProfileItems();
+}
+
 async function loadSettings() {
   const settings = await api.getSettings();
   state.settings = settings;
@@ -419,6 +505,7 @@ async function loadSettings() {
   renderProfileOptions();
   $("week-start").value = settings.week_start;
   renderQuickSettings();
+  renderSmartModelSelects();
   renderKeyBadge(settings.api_key_configured);
 }
 
@@ -436,6 +523,7 @@ async function saveSetting(changes) {
     const updated = await api.patchSettings(changes);
     state.settings = { ...state.settings, ...updated };
     renderQuickSettings();
+    renderSmartModelSelects();
     state.loaded.delete("activity");
     state.loaded.delete("settings");
   } catch (error) {
@@ -488,6 +576,16 @@ function renderProfilesList() {
       badge.className = "badge";
       badge.textContent = "embutido";
       name.append(badge);
+    }
+    const meta = [];
+    if (profile.model) meta.push(profile.model);
+    const regras = (profile.options && profile.options.items) || [];
+    if (regras.length) meta.push(`${regras.length} regra${regras.length === 1 ? "" : "s"}`);
+    if (meta.length) {
+      const info = document.createElement("span");
+      info.className = "muted small";
+      info.textContent = " · " + meta.join(" · ");
+      name.append(info);
     }
     row.append(name);
 
@@ -567,6 +665,9 @@ function openProfileEditor(profile) {
   $("profile-terms").checked = Boolean(
     profile && profile.options && profile.options.preservar_termos
   );
+  state.profileItems = [...((profile && profile.options && profile.options.items) || [])];
+  renderProfileItems();
+  $("profile-model").value = (profile && profile.model) || "";
   $("profile-name").focus();
 }
 
@@ -582,6 +683,8 @@ async function saveProfile() {
   if ($("profile-tone").value) options.tom = $("profile-tone").value;
   if ($("profile-concision").value) options.concisao = $("profile-concision").value;
   if ($("profile-terms").checked) options.preservar_termos = true;
+  if (state.profileItems.length) options.items = [...state.profileItems];
+  if ($("profile-model").value) options.modelo = $("profile-model").value;
 
   try {
     if (state.profileEditing) {
@@ -1264,7 +1367,17 @@ function bindEvents() {
     renderProfilesList();
     state.loaded.delete("history");
   });
+  $("smart-model").addEventListener("change", () =>
+    saveSetting({ smart_model: $("smart-model").value })
+  );
   $("profile-new").addEventListener("click", () => openProfileEditor(null));
+  $("profile-item-add").addEventListener("click", addProfileItem);
+  $("profile-item-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addProfileItem();
+    }
+  });
   $("profile-cancel").addEventListener("click", closeProfileEditor);
   $("profile-save").addEventListener("click", saveProfile);
   $("language").addEventListener("input", scheduleLanguageSave);

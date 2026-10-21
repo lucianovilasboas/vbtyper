@@ -27,6 +27,7 @@ class SettingsService:
                     language=self.settings.default_language,
                     mode=self.settings.default_mode,
                     default_profile=self.settings.default_mode,
+                    smart_model=self.settings.smart_model,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -35,6 +36,13 @@ class SettingsService:
             session.refresh(row)
             return row
 
+    def smart_model_now(self) -> str:
+        """Modelo de texto vigente: o do banco, caindo para o do ambiente."""
+        try:
+            return self.current().smart_model or self.settings.smart_model
+        except Exception:  # pragma: no cover - banco indisponível não derruba o ditado
+            return self.settings.smart_model
+
     def update(
         self,
         *,
@@ -42,6 +50,7 @@ class SettingsService:
         language: str | None = None,
         mode: str | None = None,
         default_profile: str | None = None,
+        smart_model: str | None = None,
         week_start: str | None = None,
     ) -> AppSetting:
         with self.session_factory() as session:
@@ -53,6 +62,7 @@ class SettingsService:
                     language=self.settings.default_language,
                     mode=self.settings.default_mode,
                     default_profile=self.settings.default_mode,
+                    smart_model=self.settings.smart_model,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -83,6 +93,15 @@ class SettingsService:
                     raise DomainError(f"Perfil inválido: {normalized}.", code="invalid_profile")
                 row.default_profile = normalized
                 row.mode = LITERAL_SLUG if normalized == LITERAL_SLUG else "smart"
+            if smart_model is not None:
+                normalized_model = smart_model.strip()
+                if normalized_model not in self.settings.allowed_smart_models:
+                    raise DomainError(
+                        "Modelo de texto inválido. Use um de: "
+                        f"{', '.join(self.settings.allowed_smart_models)}.",
+                        code="invalid_smart_model",
+                    )
+                row.smart_model = normalized_model
             if week_start is not None:
                 normalized = week_start.strip().lower()
                 if normalized not in WEEK_STARTS:

@@ -14,6 +14,8 @@ class ProfileRead(BaseModel):
     hint: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
     builtin: bool
+    # Modelo de texto só deste perfil; ``None`` usa o padrão das configurações.
+    model: str | None = None
 
 
 class ProfileCreate(BaseModel):

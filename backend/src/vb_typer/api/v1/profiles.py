@@ -19,6 +19,7 @@ def _read(spec: ProfileSpec) -> ProfileRead:
         hint=spec.hint,
         options=dict(spec.options or {}),
         builtin=spec.builtin,
+        model=spec.model,
     )
 
 

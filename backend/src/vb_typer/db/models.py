@@ -79,6 +79,8 @@ class AppSetting(Base):
     mode: Mapped[str] = mapped_column(String(16), nullable=False, default="literal")
     # Perfil usado quando o cliente não escolhe um na hora do ditado.
     default_profile: Mapped[str] = mapped_column(String(40), nullable=False, default="literal")
+    # Modelo de texto (segunda etapa). O ambiente define só o valor inicial.
+    smart_model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-4o-mini")
     week_start: Mapped[str] = mapped_column(String(16), nullable=False, default="monday")
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)
 

@@ -86,3 +86,23 @@ async def test_mode_keeps_the_default_profile_in_sync(client, auth):
 
     body = (await client.get("/api/v1/settings", headers=auth)).json()
     assert body["default_profile"] == "revisado"
+
+
+async def test_smart_model_can_be_changed(client, auth):
+    response = await client.patch("/api/v1/settings", headers=auth, json={"smart_model": "gpt-4o"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["smart_model"] == "gpt-4o"
+    assert "gpt-4o" in body["allowed_smart_models"]
+    # O preço vem da tabela do domínio (entrada, saída por 1M).
+    assert body["text_prices"]["gpt-4o"] == [2.5, 10.0]
+
+
+async def test_invalid_smart_model_is_rejected(client, auth):
+    response = await client.patch(
+        "/api/v1/settings", headers=auth, json={"smart_model": "nao-existe"}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_smart_model"

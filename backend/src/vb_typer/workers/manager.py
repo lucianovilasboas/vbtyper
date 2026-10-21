@@ -22,6 +22,7 @@ from vb_typer.domain.profiles import (
 )
 from vb_typer.services.normalize import needs_normalization
 from vb_typer.services.profiles import ProfileService
+from vb_typer.services.settings import SettingsService
 from vb_typer.services.transcription import JobContext, TranscriptionService
 
 logger = logging.getLogger(__name__)
@@ -34,11 +35,13 @@ class JobManager:
         openai: OpenAIAdapter,
         settings: AppSettings,
         profiles: ProfileService,
+        settings_service: SettingsService,
     ) -> None:
         self.service = service
         self.openai = openai
         self.settings = settings
         self.profiles = profiles
+        self.settings_service = settings_service
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.workers: list[asyncio.Task] = []
         self.running: dict[str, asyncio.Task] = {}
@@ -69,7 +72,7 @@ class JobManager:
         await self.queue.put(job_id)
 
     async def _apply_profile(
-        self, text: str, context: JobContext, profile, api_key: str
+        self, text: str, context: JobContext, profile, api_key: str, model: str
     ) -> tuple[str, str, dict | None, str]:
         """Aplica o perfil do job; devolve ``(texto, modo, usage, perfil entregue)``.
 
@@ -87,7 +90,7 @@ class JobManager:
         try:
             adjusted, usage = await self.openai.normalize(
                 text=text,
-                model=self.settings.smart_model,
+                model=model,
                 instructions=compose_instructions(profile),
                 api_key=api_key,
             )
@@ -145,8 +148,10 @@ class JobManager:
             text = (result.get("text") or "").strip()
             if not text:
                 raise ProviderError("A API não reconheceu fala nesse áudio.")
+            # O perfil pode fixar o modelo; senão vale o padrão das configurações.
+            model = profile.model or await asyncio.to_thread(self.settings_service.smart_model_now)
             text, mode, usage, delivered = await self._apply_profile(
-                text, context, profile, api_key
+                text, context, profile, api_key, model
             )
             await asyncio.to_thread(
                 self.service.finish_success,
@@ -156,7 +161,7 @@ class JobManager:
                 mode=mode,
                 profile=delivered,
                 usage=usage,
-                text_model=self.settings.smart_model,
+                text_model=model,
                 duration_s=context.duration_s,
                 transcribe_ms=transcribe_ms,
             )
