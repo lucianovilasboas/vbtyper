@@ -26,7 +26,7 @@ def talk_to_running_instance(command: str) -> dict | None:
             client.settimeout(1.0)
             client.connect(str(control_socket_path()))
             client.sendall((json.dumps({"cmd": command}) + "\n").encode())
-            data = client.recv(4096)
+            data = client.recv(65536)
     except (OSError, ValueError):
         return None
     if not data:

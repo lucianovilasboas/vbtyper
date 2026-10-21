@@ -40,12 +40,13 @@ escolhe (tela de Configurações ou campo `mode` no job). O que foi implementado
 - a dica curta de formatação (`prompt`) só vai na transcrição quando o modo é
   smart — no literal nada enviesa o reconhecimento.
 
-O cliente desktop também já lê a configuração e envia o modo, e a **bandeja**
-ganhou os itens *Modo literal* / *Modo inteligente* (`v0.5.1`) — com o vigente
-marcado no rótulo (itens de rádio foram descartados: ver a armadilha anotada no
-`AGENTS.md`).
+O cliente desktop também já lê a configuração e envia o perfil, e a **bandeja**
+passou a listar os **perfis de texto** (`v0.5.1` trouxe os modos, substituídos
+pelos perfis agora) — com o vigente marcado no rótulo (itens de rádio foram
+descartados: ver a armadilha anotada no `AGENTS.md`). A lista é relida de tempos
+em tempos, então perfis criados ou apagados na interface aparecem sem reiniciar.
 
-### Perfis de texto: **feito em `v0.12.0`** (backend + web; clientes depois)
+### Perfis de texto: **feito em `v0.12.0`** (backend + web; Linux feito)
 
 Dez perfis embutidos — literal, revisado, e-mail, WhatsApp, programação, prompt,
 acadêmico, currículo, carta e ata — mais perfis personalizados (duplicar e
@@ -56,8 +57,8 @@ a conversão nunca parte de uma versão já editada. O job aceita `profile` (`mo
 continua como alias para o desktop), `/settings` ganhou `default_profile` e
 `POST /transcriptions/{id}/render` gera outra versão sem re-transcrever o áudio.
 Na web: seletor na aba Ditar, cartão de perfis nas Configurações e seletor de
-versões (mais "gerar versão") no Histórico. Os clientes desktop/macOS/Windows
-ficam para depois.
+versões (mais "gerar versão") no Histórico. No cliente Linux, o job passa a
+enviar `profile` e a bandeja lista os perfis; macOS/Windows ficam para depois.
 
 **Selects e fases (`v0.12.1`).** Modelo, idioma e perfil são trocados direto na
 linha "Ditando com"; a linha de status acompanha a fase real do job

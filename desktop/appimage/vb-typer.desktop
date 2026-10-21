@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=VB Typer
+Comment=Ditado por voz no cursor ativo
+Exec=vb-typer-desktop --base-url https://vbtyper.lucianovilasboas.com.br
+Icon=vb-typer
+Terminal=false
+Categories=Utility;
+StartupNotify=false
+X-AppImage-Name=VB Typer
+X-AppImage-Version=@VERSION@
+X-AppImage-Arch=x86_64

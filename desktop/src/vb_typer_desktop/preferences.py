@@ -20,7 +20,7 @@ DEFAULTS = {
     "size": 40,
     "speed": 1.0,
     "sensitivity": 1.0,
-    "shape": "bar",
+    "shape": "wave",
 }
 MIN_SIZE, MAX_SIZE = 24, 96
 MIN_TUNING, MAX_TUNING = 0.5, 3.0
@@ -43,8 +43,8 @@ class Preferences:
 
     ``speed`` e ``sensitivity`` ajustam o indicador: quanto maior, mais rápido
     ele reage e mais altas ficam as barras para a mesma voz. ``shape`` escolhe o
-    desenho da fase de gravação: ``bar`` (barra de nível, como na tela web) ou
-    ``wave`` (a onda de barras que existia antes).
+    desenho da fase de gravação: ``wave`` (a onda colorida da tela Ditar) ou
+    ``bar`` (barra de nível).
     """
 
     notices: str = DEFAULTS["notices"]

@@ -127,11 +127,17 @@ class ApiClient:
         model: str | None = None,
         language: str | None = None,
         mode: str | None = None,
+        profile: str | None = None,
     ) -> Job:
         """Envia o áudio e recebe ``202`` com o job aceito."""
         fields = {
             key: value
-            for key, value in (("model", model), ("language", language), ("mode", mode))
+            for key, value in (
+                ("model", model),
+                ("language", language),
+                ("mode", mode),
+                ("profile", profile),
+            )
             if value
         }
         response = self._request(
@@ -158,11 +164,11 @@ class ApiClient:
         self._request("PATCH", f"/api/v1/transcriptions/{transcription_id}", json=payload)
 
     def patch_settings(self, changes: dict) -> dict:
-        """Altera configurações no backend (usado pela bandeja para trocar o modo)."""
+        """Altera configurações no backend (a bandeja usa para trocar o perfil)."""
         return self._request("PATCH", "/api/v1/settings", json=changes).json()
 
-    def current_options(self) -> tuple[str, str, str]:
-        """Modelo, idioma e modo escolhidos na interface.
+    def current_options(self) -> tuple[str, str, str, str]:
+        """Modelo, idioma, modo e perfil padrão escolhidos na interface.
 
         A falha nunca impede o ditado: sem resposta, o backend decide pelos
         padrões dele (literal entre eles).
@@ -170,9 +176,28 @@ class ApiClient:
         try:
             payload = self.settings()
         except ApiError:
-            return "", "", ""
+            return "", "", "", ""
         return (
             str(payload.get("model") or ""),
             str(payload.get("language") or ""),
             str(payload.get("mode") or ""),
+            str(payload.get("default_profile") or ""),
         )
+
+    def list_profiles(self) -> list[dict]:
+        """Perfis de texto disponíveis (slug e nome), na ordem da API.
+
+        Alimenta o menu da bandeja. Uma falha devolve lista vazia: o ditado
+        segue com o perfil que já estava em uso.
+        """
+        try:
+            payload = self._request("GET", "/api/v1/profiles").json()
+        except (ApiError, ValueError):
+            return []
+        if not isinstance(payload, list):
+            return []
+        return [
+            {"slug": str(item.get("slug") or ""), "name": str(item.get("name") or "")}
+            for item in payload
+            if isinstance(item, dict) and item.get("slug")
+        ]

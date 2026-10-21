@@ -109,16 +109,18 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
 15. O indicador e a bandeja são helpers GTK3 em **processo separado**, no Python
     do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
     Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
-    ali. `tray/tray_helper.py` veio do 1.x e mantém a estrutura original; a única
-    adição do 2.0 está marcada no arquivo (os itens de **modo de transcrição**),
+    ali. `tray/tray_helper.py` veio do 1.x e mantém a estrutura original; as
+    adições do 2.0 estão marcadas no arquivo (os **perfis de texto** no menu),
     com o resto intocado. **Não use `RadioMenuItem`/`CheckMenuItem` nesse menu:**
     o host do AppIndicator constrói o menu no primeiro uso e ativava um item
-    sozinho, trocando o modo sem clique. Os itens de modo são simples, com o
-    vigente marcado no próprio rótulo.
-16. O modo de transcrição é `literal` por **padrão** — o modo `smart` só entra
-    quando o usuário escolhe (em `/api/v1/settings` ou no campo `mode` do job).
-    No modo smart, o texto reconhecido é guardado em `transcriptions.raw_text` e
-    o ajuste **nunca** derruba o ditado: falhou, entrega o literal. Textos sem
+    sozinho, trocando a escolha sem clique. Os itens de perfil são simples, com o
+    vigente marcado no próprio rótulo, e a lista é reconstruída quando muda.
+16. O perfil de texto é `literal` ("Transcrição fiel") por **padrão**; os demais
+    perfis passam pela segunda chamada (modo smart). A escolha mora em
+    `app_settings.default_profile` — o cliente desktop envia **`profile`** no job
+    (nunca `mode`) e a bandeja grava `default_profile`, o mesmo lugar em que a
+    interface edita. O texto reconhecido é guardado em `transcriptions.raw_text`
+    e o ajuste **nunca** derruba o ditado: falhou, entrega o literal. Textos sem
     nada a converter (prosa comum) pulam a segunda chamada — a heurística está em
     `services/normalize.py` e é conservadora de propósito.
 17. Ícones e marca são **gerados** por `scripts/build-icons.py` a partir de
@@ -204,13 +206,17 @@ de propor trabalho novo.
 - Avisos: indicador visual silencioso por padrão (sem balão, sem som), ancorado
   na base da janela em foco; balões ficam para erro. A volta é
   `--notices balloons`.
-- A fase de gravação do indicador é uma **barra de nível ancorada à esquerda**,
-  como o medidor da tela Ditar; `"shape": "wave"` no `desktop.json` traz de volta
-  a onda de barras. A fase de transcrição é uma barra que desliza — o movimento
-  é o que distingue as duas.
-- A onda do indicador usa o nível real do `arecord`, que sai a cada período de
-  captura: por isso a captura usa `--period-size=256` (~17 ms por nível, contra
-  ~140 ms do padrão). O ataque é por constante de tempo (~35 ms) e o **retorno é
-  linear** (350%/s, zerando abaixo de 4%) — exponencial no retorno deixa uma
-  cauda que se percebe como lentidão. `speed` e `sensitivity` no `desktop.json`
-  ajustam a reação sem tocar em código.
+- A fase de gravação do indicador é a **mesma onda da tela Ditar**: linha
+  colorida com o gradiente do canvas web, desenhada a partir das amostras reais
+  do microfone; sem amostras ainda, o envelope senoidal de repouso da web. A fase
+  de transcrição é uma barra que desliza — o movimento é o que distingue as duas.
+  `"shape": "bar"` no `desktop.json` troca por uma barra de nível ancorada à
+  esquerda.
+- A onda do indicador usa **áudio real**: o daemon lê a cauda do WAV em andamento
+  (`Recorder.waveform`, 512 quadros) e envia 256 pontos no snapshot apenas quando
+  está gravando, o indicador está ligado e o `shape` é `wave`. O nível do medidor
+  do `arecord` continua alimentando a barra opcional, e a captura usa
+  `--period-size=256` (~17 ms por nível, contra ~140 ms do padrão). O ataque é
+  por constante de tempo (~35 ms) e o **retorno é linear** (350%/s, zerando abaixo
+  de 4%) — exponencial no retorno deixa uma cauda que se percebe como lentidão.
+  `speed` e `sensitivity` no `desktop.json` ajustam a reação sem tocar em código.

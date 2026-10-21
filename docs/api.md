@@ -34,20 +34,24 @@ Códigos: `unauthorized` (401), `forbidden` (403), `invalid_host` (400),
 ### `GET /settings`
 
 ```json
-{ "model": "gpt-4o-mini-transcribe", "language": "pt", "mode": "literal", "week_start": "monday",
+{ "model": "gpt-4o-mini-transcribe", "language": "pt", "mode": "literal",
+  "default_profile": "literal", "week_start": "monday",
   "api_key_configured": true, "allowed_models": ["gpt-4o-mini-transcribe", "gpt-transcribe"] }
 ```
 
 ### `PATCH /settings`
 
 ```json
-{ "model": "gpt-transcribe", "language": "en", "mode": "smart", "week_start": "sunday" }
+{ "model": "gpt-transcribe", "language": "en", "default_profile": "email", "week_start": "sunday" }
 ```
 
 Todos os campos são opcionais. `model` precisa estar em `allowed_models`
-(`invalid_model`); `week_start` é `monday` ou `sunday`; `mode` é `literal` ou
-`smart` (`invalid_mode`). O modo vale para os próximos ditados — inclusive os do
-cliente desktop, que lê esta configuração antes de cada envio.
+(`invalid_model`); `week_start` é `monday` ou `sunday`; `default_profile` é um
+slug de `/profiles` (`invalid_profile`); `mode` é `literal` ou `smart`
+(`invalid_mode`). Os dois são espelhos: trocar `mode` grava o perfil
+literal/revisado e trocar `default_profile` grava `mode` `literal`/`smart`. O
+perfil vale para os próximos ditados — inclusive os do cliente desktop, que lê
+esta configuração antes de cada envio.
 
 ### `POST /settings/test`
 
@@ -68,7 +72,8 @@ Faz um `GET` somente leitura em `/models` da OpenAI. Não transcreve áudio.
 | `file` | sim | áudio (wav, webm, ogg, mp3, m4a); até 25 MB |
 | `model` | não | padrão: configuração atual |
 | `language` | não | padrão: `pt` |
-| `mode` | não | `literal` (padrão) ou `smart`; padrão vem de `/settings` |
+| `profile` | não | slug do perfil (`/api/v1/profiles`); vence `mode` |
+| `mode` | não | legado: `literal` (padrão) ou `smart`; vira perfil literal/revisado |
 
 ```json
 { "id": "3f0c…", "status": "queued", "created_at": "2026-10-18T18:44:02",

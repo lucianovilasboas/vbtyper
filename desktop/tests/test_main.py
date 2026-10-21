@@ -59,6 +59,34 @@ def test_notices_flag_restores_the_old_behaviour(monkeypatch):
     assert prefs.shows_indicator is False
 
 
+def _base_url_used(monkeypatch, argv: list[str]) -> str:
+    monkeypatch.setattr(main_module, "talk_to_running_instance", lambda cmd: None)
+    seen: list[str] = []
+    monkeypatch.setattr(
+        main_module, "run_daemon", lambda api, **kwargs: seen.append(api.base_url) or 0
+    )
+    assert main_module.main(argv) == 0
+    return seen[0]
+
+
+def test_base_url_comes_from_the_environment(monkeypatch):
+    """O AppRun exporta o domínio do servidor; a flag só precisa vencer quando existe."""
+    monkeypatch.setenv("VB_TYPER_API_BASE_URL", "https://exemplo.ts.net")
+    assert _base_url_used(monkeypatch, []) == "https://exemplo.ts.net"
+
+
+def test_explicit_base_url_wins_over_the_environment(monkeypatch):
+    monkeypatch.setenv("VB_TYPER_API_BASE_URL", "https://exemplo.ts.net")
+    assert _base_url_used(monkeypatch, ["--base-url", "http://127.0.0.1:9999"]) == (
+        "http://127.0.0.1:9999"
+    )
+
+
+def test_base_url_defaults_to_the_local_api(monkeypatch):
+    monkeypatch.delenv("VB_TYPER_API_BASE_URL", raising=False)
+    assert _base_url_used(monkeypatch, []) == "http://127.0.0.1:8765"
+
+
 def test_self_test_reports_a_missing_recorder(monkeypatch, capsys):
     from vb_typer_desktop import __main__ as module
 

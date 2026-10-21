@@ -22,6 +22,10 @@ METER_PATTERN = re.compile(rb"([0-9]{1,3})%")
 # impresso a cada período: o padrão dá ~7 atualizações por segundo (140 ms), o
 # que deixa a onda lenta. Com 256 quadros ele passa a ~58 por segundo (17 ms).
 CAPTURE_PERIOD_FRAMES = 256
+# Janela recente da captura que vira a onda do indicador (512 quadros ≈ 32 ms)
+# e quantos pontos o desenho recebe.
+WAVEFORM_WINDOW_SAMPLES = 512
+WAVEFORM_POINTS = 256
 # Cabeçalho que o arecord imprime ao começar bem; não é mensagem de erro.
 BANNER_MARKERS = ("Gravando WAVE", "Recording WAVE")
 
@@ -34,6 +38,25 @@ def temp_wav_path() -> Path:
     handle, name = tempfile.mkstemp(prefix="vb-typer-", suffix=".wav")
     os.close(handle)
     return Path(name)
+
+
+def waveform_from_pcm(pcm: bytes, points: int = WAVEFORM_POINTS) -> list[int]:
+    """Reduz PCM S16LE a pontos de 0–255, como o analisador da tela Ditar."""
+    sample_count = min(len(pcm) // 2, WAVEFORM_WINDOW_SAMPLES)
+    if points < 2 or sample_count < 2:
+        return []
+    start = len(pcm) // 2 - sample_count
+    samples = [
+        struct.unpack_from("<h", pcm, (start + index) * 2)[0] for index in range(sample_count)
+    ]
+    output_count = min(points, sample_count)
+    return [
+        min(
+            255,
+            max(0, (samples[round(index * (sample_count - 1) / (output_count - 1))] + 32768) >> 8),
+        )
+        for index in range(output_count)
+    ]
 
 
 def capture_command(path: Path) -> list[str]:
@@ -231,6 +254,20 @@ class Recorder:
         matches = METER_PATTERN.findall(chunk)
         if matches:
             self.level = min(100, int(matches[-1]))
+
+    def waveform(self) -> list[int]:
+        """Lê a janela recente da captura em andamento para o indicador visual."""
+        try:
+            size = self.path.stat().st_size
+            if size <= 44:
+                return []
+            offset = max(44, size - WAVEFORM_WINDOW_SAMPLES * 2)
+            with self.path.open("rb") as handle:
+                handle.seek(offset)
+                pcm = handle.read(size - offset)
+            return waveform_from_pcm(pcm)
+        except OSError:
+            return []
 
     def last_stderr(self) -> str:
         """Última mensagem útil do ``arecord`` — medidor e cabeçalho são ignorados."""

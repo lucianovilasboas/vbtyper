@@ -89,6 +89,11 @@ class FakeApi:
     """Cliente da API em memória, sem rede."""
 
     base_url = "http://127.0.0.1:8765"
+    DEFAULT_PROFILES = [
+        {"slug": "literal", "name": "Transcrição fiel"},
+        {"slug": "revisado", "name": "Texto revisado"},
+        {"slug": "email", "name": "E-mail profissional"},
+    ]
 
     def __init__(
         self,
@@ -99,8 +104,12 @@ class FakeApi:
         model: str = "gpt-4o-mini-transcribe",
         language: str = "pt",
         mode: str = "literal",
+        default_profile: str = "literal",
+        profiles: list[dict] | None = None,
     ) -> None:
         self.mode = mode
+        self.default_profile = default_profile
+        self.profiles = list(profiles) if profiles is not None else list(self.DEFAULT_PROFILES)
         self.text = text
         self.status = status
         self.error = error
@@ -111,18 +120,39 @@ class FakeApi:
         self.polls = 0
         self.cancelled: list[str] = []
         self.inserts: list[tuple[int, bool, int | None]] = []
+        self.patched: list[dict] = []
         self.on_poll = None
 
     def ready(self) -> dict:
         return {"status": "ok", "database": True, "api_key_configured": True}
 
     def settings(self) -> dict:
-        return {"model": self.model, "language": self.language}
+        return {
+            "model": self.model,
+            "language": self.language,
+            "mode": self.mode,
+            "default_profile": self.default_profile,
+        }
 
-    def current_options(self) -> tuple[str, str, str]:
-        return self.model, self.language, self.mode
+    def current_options(self) -> tuple[str, str, str, str]:
+        return self.model, self.language, self.mode, self.default_profile
 
-    def create_job(self, data, filename, content_type, model=None, language=None, mode=None) -> Job:
+    def list_profiles(self) -> list[dict]:
+        return list(self.profiles)
+
+    def patch_settings(self, changes: dict) -> dict:
+        self.patched.append(changes)
+        if "mode" in changes:
+            self.mode = str(changes["mode"])
+            self.default_profile = "literal" if self.mode == "literal" else "revisado"
+        if "default_profile" in changes:
+            self.default_profile = str(changes["default_profile"])
+            self.mode = "literal" if self.default_profile == "literal" else "smart"
+        return {"mode": self.mode, "default_profile": self.default_profile}
+
+    def create_job(
+        self, data, filename, content_type, model=None, language=None, mode=None, profile=None
+    ) -> Job:
         self.uploads.append(
             {
                 "bytes": len(data),
@@ -131,6 +161,7 @@ class FakeApi:
                 "model": model,
                 "language": language,
                 "mode": mode,
+                "profile": profile,
             }
         )
         return Job(id="job-1", status="queued")
@@ -175,7 +206,11 @@ class FakeRecorder:
         self.interrupted = interrupted
         self.stderr = stderr
         self.level = 0
+        self.waveform_data = [0, 64, 128, 192, 255]
         self.discarded = False
+
+    def waveform(self) -> list[int]:
+        return list(self.waveform_data)
 
     def stop(self) -> bool:
         return self.interrupted

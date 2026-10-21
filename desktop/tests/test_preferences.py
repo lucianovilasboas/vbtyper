@@ -70,10 +70,10 @@ def test_tuning_defaults_and_bounds():
     assert preferences.from_mapping({"sensitivity": True}).sensitivity == 1.0
 
 
-def test_shape_defaults_to_the_bar_and_accepts_the_wave():
-    assert preferences.Preferences().shape == "bar"
-    assert preferences.from_mapping({"shape": "wave"}).shape == "wave"
-    assert preferences.from_mapping({"shape": "triangulo"}).shape == "bar"
+def test_shape_defaults_to_the_web_wave_and_accepts_the_bar():
+    assert preferences.Preferences().shape == "wave"
+    assert preferences.from_mapping({"shape": "bar"}).shape == "bar"
+    assert preferences.from_mapping({"shape": "triangulo"}).shape == "wave"
     assert preferences.SHAPES == ("bar", "wave")
 
 

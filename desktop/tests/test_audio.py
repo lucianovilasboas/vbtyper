@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock
@@ -171,3 +172,43 @@ def test_discard_removes_file(tmp_path):
     path.write_bytes(b"x")
     audio.Recorder(path).discard()
     assert not path.exists()
+
+
+# ------------------------------------------------------------------- onda
+
+
+def test_waveform_from_pcm_maps_to_the_web_scale():
+    pcm = b"".join(struct.pack("<h", value) for value in (-32768, 0, 32767))
+    points = audio.waveform_from_pcm(pcm, points=3)
+    assert len(points) == 3
+    assert points[0] == 0
+    assert 127 <= points[1] <= 128
+    assert points[2] == 255
+
+
+def test_waveform_from_pcm_needs_two_samples():
+    assert audio.waveform_from_pcm(b"") == []
+    assert audio.waveform_from_pcm(b"\x00") == []
+    assert audio.waveform_from_pcm(b"\x00\x00") == []
+
+
+def test_waveform_from_pcm_caps_the_window_and_the_points():
+    pcm = struct.pack("<h", 1000) * (audio.WAVEFORM_WINDOW_SAMPLES + 100)
+    points = audio.waveform_from_pcm(pcm)
+    assert len(points) == audio.WAVEFORM_POINTS
+    assert audio.WAVEFORM_WINDOW_SAMPLES == 512
+
+
+def test_recorder_waveform_reads_the_tail_of_the_capture(make_wav, tmp_path):
+    path = make_wav(tmp_path / "captura.wav", seconds=0.2)
+    assert len(audio.Recorder(path).waveform()) == audio.WAVEFORM_POINTS
+
+
+def test_recorder_waveform_is_empty_before_the_header(make_wav, tmp_path):
+    path = make_wav(tmp_path / "captura.wav", seconds=0.001)
+    path.write_bytes(path.read_bytes()[:44])
+    assert audio.Recorder(path).waveform() == []
+
+
+def test_recorder_waveform_tolerates_a_missing_file(tmp_path):
+    assert audio.Recorder(tmp_path / "nada.wav").waveform() == []

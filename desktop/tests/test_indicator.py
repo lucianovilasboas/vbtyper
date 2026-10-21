@@ -205,3 +205,47 @@ def test_shape_is_parsed_from_the_command_line(indicator):
 def test_debug_is_inert_without_the_environment_variable(indicator):
     assert indicator.DEBUG_PATH in (None, "") or isinstance(indicator.DEBUG_PATH, str)
     indicator._debug("nada deve acontecer")  # não pode falhar nem escrever nada
+
+
+# ------------------------------------------------------------------- onda
+
+
+def test_waveform_from_state_validates_and_limits(indicator):
+    samples = indicator.waveform_from_state([0, 300, -5, True, "x", 128])
+    assert samples == (0, 255, 0, 128)
+
+
+def test_waveform_from_state_ignores_other_types(indicator):
+    assert indicator.waveform_from_state(None) == ()
+    assert indicator.waveform_from_state("nada") == ()
+    assert indicator.waveform_from_state([1.5, 20]) == (20,)
+
+
+def test_waveform_from_state_caps_the_points(indicator):
+    samples = indicator.waveform_from_state(list(range(256)) * 4)
+    assert len(samples) == indicator.MAX_WAVEFORM_POINTS
+
+
+def test_waveform_points_use_the_web_scale(indicator):
+    points = indicator.waveform_points((0, 128, 255), 300, 100)
+    assert [point[0] for point in points] == [0, 100, 200]
+    assert [round(point[1]) for point in points] == [0, 50, 100]
+
+
+def test_waveform_points_of_an_empty_sample(indicator):
+    assert indicator.waveform_points((), 300, 100) == ()
+
+
+def test_wave_palette_is_the_same_as_the_web(indicator):
+    stops = indicator.WAVE_GRADIENT_STOPS
+    assert len(stops) == 9
+    assert stops[0][1] == (155 / 255, 0.0, 47 / 255)
+    assert stops[-1][1] == (240 / 255, 65 / 255, 166 / 255)
+
+
+def test_the_wave_is_the_default_shape(indicator):
+    import inspect
+
+    signature = inspect.signature(indicator.Indicator.__init__)
+    assert signature.parameters["shape"].default == "wave"
+    assert indicator.SHAPES == ("bar", "wave")

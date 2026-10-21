@@ -17,6 +17,9 @@ import sys
 import time
 
 BARS = 14
+MAX_WAVEFORM_POINTS = 256
+WAVE_LINE_WIDTH = 2.5
+WAVE_GLOW_WIDTH = 5.5
 # Enquanto o painel está visível a consulta é rápida; ocioso, ele é econômico.
 # 60 ms é o limite de quanto o painel pode demorar a aparecer após o atalho.
 POLL_VISIBLE_MS = 45
@@ -40,7 +43,7 @@ FULL_LEVEL = 36.0
 GAMMA = 0.75
 DEBUG_PATH = os.environ.get("VB_TYPER_INDICATOR_DEBUG")
 
-# A onda usa o roxo de destaque do app (o mesmo `accent` do 1.x).
+# A barra de nível usa o roxo de destaque do app (o mesmo `accent` do 1.x).
 LILAC_PALE = (0.85, 0.80, 1.00)
 LILAC = (0.65, 0.48, 1.00)
 PURPLE = (0.42, 0.16, 0.88)
@@ -52,14 +55,24 @@ SHADOW = (0.04, 0.02, 0.10, 0.45)
 # Trilho da barra de nível: discreto, mas visível no silêncio (senão o painel
 # parece não ter começado).
 TRACK = (0.42, 0.20, 0.86, 0.34)
-# Gradiente da barra de nível. A onda começa num lilás quase branco (as barras
-# curtas ficam leves), mas numa barra única isso deixava a barra cheia pálida.
+# Gradiente da barra de nível.
 BAR_TOP = (0.58, 0.40, 1.00)
 BAR_BOTTOM = (0.38, 0.13, 0.86)
 # Altura da barra de nível, como fração da altura do painel.
 BAR_RATIO = 0.30
 SHAPES = ("bar", "wave")
 PHASES = ("recording", "processing", "inserted", "error")
+WAVE_GRADIENT_STOPS = (
+    (0.0, (155 / 255, 0 / 255, 47 / 255)),
+    (0.12, (209 / 255, 27 / 255, 27 / 255)),
+    (0.25, (1.0, 138 / 255, 0 / 255)),
+    (0.38, (242 / 255, 230 / 255, 0 / 255)),
+    (0.5, (94 / 255, 220 / 255, 122 / 255)),
+    (0.63, (53 / 255, 214 / 255, 212 / 255)),
+    (0.76, (40 / 255, 169 / 255, 247 / 255)),
+    (0.88, (156 / 255, 92 / 255, 224 / 255)),
+    (1.0, (240 / 255, 65 / 255, 166 / 255)),
+)
 
 
 def _mix(first, second, ratio: float) -> tuple[float, float, float]:
@@ -147,6 +160,50 @@ def phase_from_state(state: dict) -> str:
     return "idle"
 
 
+def waveform_from_state(raw) -> tuple[int, ...]:
+    """Valida a amostra recebida no socket e limita o trabalho do desenho."""
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    return tuple(
+        min(255, max(0, item))
+        for item in raw[:MAX_WAVEFORM_POINTS]
+        if isinstance(item, int) and not isinstance(item, bool)
+    )
+
+
+def waveform_points(samples, width: float, height: float) -> tuple[tuple[float, float], ...]:
+    """Converte amostras em coordenadas com a mesma escala do canvas web."""
+    if not samples:
+        return ()
+    slice_width = width / len(samples)
+    return tuple((index * slice_width, value * height / 256) for index, value in enumerate(samples))
+
+
+def _wave_gradient(cairo, width: float, alpha: float):
+    gradient = cairo.LinearGradient(0, 0, width, 0)
+    for stop, colour in WAVE_GRADIENT_STOPS:
+        gradient.add_color_stop_rgba(stop, *colour, alpha)
+    return gradient
+
+
+def _draw_idle_wave(cr, width: float, height: float, gradient) -> None:
+    """Desenha o envelope ocioso da tela Ditar enquanto chegam amostras reais."""
+    center_y = height / 2
+    amplitude = 18 * height / 120
+    phase = time.monotonic() * 3.6
+    cr.new_path()
+    for x in range(int(width) + 1):
+        envelope = math.exp(-abs(x - width / 2) / 180)
+        y = center_y + math.sin(x * 0.02 + phase) * amplitude * envelope * 3
+        if x == 0:
+            cr.move_to(x, y)
+        else:
+            cr.line_to(x, y)
+    cr.set_source(gradient)
+    cr.set_line_width(WAVE_LINE_WIDTH)
+    cr.stroke()
+
+
 class Indicator:
     """Painel flutuante com a onda do microfone e o andamento da transcrição."""
 
@@ -155,7 +212,7 @@ class Indicator:
         socket_path: str,
         speed: float = 1.0,
         sensitivity: float = 1.0,
-        shape: str = "bar",
+        shape: str = "wave",
     ) -> None:
         import gi
 
@@ -168,10 +225,11 @@ class Indicator:
         self.socket_path = socket_path
         self.speed = max(0.2, speed)
         self.sensitivity = max(0.2, sensitivity)
-        self.shape = shape if shape in SHAPES else "bar"
+        self.shape = shape if shape in SHAPES else "wave"
         self.levels = Levels(attack_s=ATTACK_S / self.speed, fall_rate=FALL_PER_SECOND * self.speed)
         self.phase = "idle"
         self.level = 0
+        self.waveform: tuple[int, ...] = ()
         self._alpha = 1.0
         self.box: tuple[int, int, int, int] | None = None
         self.position: tuple[int, int] | None = None
@@ -224,7 +282,7 @@ class Indicator:
                 client.settimeout(1.0)
                 client.connect(self.socket_path)
                 client.sendall(b'{"cmd": "state"}\n')
-                data = client.recv(8192)
+                data = client.recv(65536)
         except OSError:
             return None
         if not data:
@@ -239,6 +297,7 @@ class Indicator:
     def apply(self, state: dict) -> None:
         self.phase = phase_from_state(state)
         self.level = int(state.get("level") or 0)
+        self.waveform = waveform_from_state(state.get("waveform"))
         box = state.get("indicator")
         self.box = None
         if isinstance(box, dict):
@@ -414,22 +473,38 @@ class Indicator:
     def _draw_wave(self, cr, width, height) -> None:
         import cairo
 
-        values = self.levels.values
-        slot = width / (len(values) + 1)
-        bar_width = max(2.5, slot * 0.45)
-        middle = height / 2
-        ceiling = (height - 6) / 2
-        for index, value in enumerate(values):
-            ratio = self._level_ratio(value)
-            amplitude = max(height * 0.10, ratio * ceiling)
-            top = middle - amplitude
-            bar = amplitude * 2
-            gradient = cairo.LinearGradient(0, top, 0, top + bar)
-            gradient.add_color_stop_rgba(0, *_mix(LILAC_PALE, LILAC, ratio), self._alpha)
-            gradient.add_color_stop_rgba(1, *_mix(LILAC, PURPLE, ratio), self._alpha)
-            x = slot * (index + 1) - bar_width / 2
-            _rounded(cr, x, top, bar_width, bar, bar_width / 2)
-            self._paint(cr, gradient)
+        gradient = _wave_gradient(cairo, width, self._alpha)
+
+        def trace(samples) -> None:
+            cr.new_path()
+            for index, (x, y) in enumerate(waveform_points(samples, width, height)):
+                if index == 0:
+                    cr.move_to(x, y)
+                else:
+                    cr.line_to(x, y)
+
+        samples = self.waveform
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
+        if samples:
+            trace(samples)
+            cr.set_line_width(WAVE_GLOW_WIDTH)
+            cr.set_source(_wave_gradient(cairo, width, self._alpha * 0.2))
+            cr.stroke()
+
+            trace(samples)
+            cr.set_source(gradient)
+            cr.set_line_width(WAVE_LINE_WIDTH)
+            cr.stroke()
+        else:
+            _draw_idle_wave(cr, width, height, gradient)
+
+        cr.new_path()
+        cr.set_source_rgba(0, 0, 0, 0.08 * self._alpha)
+        cr.set_line_width(1)
+        cr.move_to(0, height / 2)
+        cr.line_to(width, height / 2)
+        cr.stroke()
 
     def _draw_sweep(self, cr, width, height) -> None:
         progress = (time.monotonic() * 0.8) % 2.0
@@ -472,7 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     socket_path: str | None = None
     speed = 1.0
     sensitivity = 1.0
-    shape = "bar"
+    shape = "wave"
     for item in arguments:
         if item.startswith("--speed="):
             speed = _tuning(item.partition("=")[2], speed)

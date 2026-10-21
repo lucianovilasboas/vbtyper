@@ -65,6 +65,8 @@ class Daemon:
         self.job_timeout = job_timeout
         self.mode = mode
         self.mode_current = ""
+        self.profile_current = ""
+        self.profiles: list[dict] = []
         self.state = HotkeyState()
         self.lock = threading.RLock()
         self.busy = False
@@ -89,6 +91,11 @@ class Daemon:
     def current_mode(self) -> str:
         """Modo de transcrição vigente (o literal é o padrão)."""
         return self.mode_current or self.mode or "literal"
+
+    @property
+    def current_profile(self) -> str:
+        """Perfil de texto vigente; vazio enquanto a configuração não foi lida."""
+        return self.profile_current
 
     @property
     def listening(self) -> bool:
@@ -161,7 +168,13 @@ class Daemon:
             "phase": phase,
             "level": self.recorder.level if self.recorder is not None else 0,
             "mode": self.current_mode,
+            "profile": self.current_profile,
+            "profiles": self.profiles,
         }
+        if recording and self.preferences.shows_indicator and self.preferences.shape == "wave":
+            get_waveform = getattr(self.recorder, "waveform", None)
+            if callable(get_waveform):
+                snapshot["waveform"] = get_waveform()
         if phase in ("inserted", "error") and self._flash_message:
             snapshot["message"] = self._flash_message
         box = self._indicator_box(phase)
@@ -211,12 +224,31 @@ class Daemon:
 
     def _watch_options(self) -> None:
         while not self.done.is_set():
-            model, language, mode = self.api.current_options()
-            if mode:
-                self.mode_current = mode
-            self.model = model or self.model
-            self.language = language or self.language
+            self.refresh_options()
             self.done.wait(OPTIONS_REFRESH_S)
+
+    def refresh_options(self) -> None:
+        """Relê modelo, idioma, modo e perfis (a bandeja acompanha sem reiniciar).
+
+        Uma falha da API mantém o que já estava em uso — inclusive a lista de
+        perfis, para o menu da bandeja não esvaziar enquanto o servidor volta.
+        """
+        model, language, mode, profile = self.api.current_options()
+        profiles = self.api.list_profiles()
+        if model:
+            self.model = model
+        if language:
+            self.language = language
+        if mode:
+            self.mode_current = mode
+        if profiles:
+            self.profiles = profiles
+            slugs = {item["slug"] for item in profiles}
+            if profile and profile not in slugs:
+                # Perfil apagado na interface enquanto o cliente rodava.
+                profile = "literal" if "literal" in slugs else ""
+        if profile:
+            self.profile_current = profile
 
     def set_mode(self, value: str) -> bool:
         """Troca o modo de transcrição no backend (é ele que guarda a escolha)."""
@@ -228,6 +260,26 @@ class Daemon:
             self._notify("VB Typer — erro", str(exc), "critical")
             return False
         self.mode_current = str(payload.get("mode") or value)
+        # Cliente antigo trocando modo: o perfil acompanha (smart = revisado).
+        default_profile = str(payload.get("default_profile") or "")
+        if default_profile:
+            self.profile_current = default_profile
+        return True
+
+    def set_profile(self, slug: str) -> bool:
+        """Troca o perfil de texto no backend (é ele que guarda a escolha)."""
+        slugs = {item["slug"] for item in self.profiles}
+        if not slug or (slugs and slug not in slugs):
+            return False
+        try:
+            payload = self.api.patch_settings({"default_profile": slug})
+        except ApiError as exc:
+            self._notify("VB Typer — erro", str(exc), "critical")
+            return False
+        self.profile_current = str(payload.get("default_profile") or slug)
+        mode = str(payload.get("mode") or "")
+        if mode:
+            self.mode_current = mode
         return True
 
     def stop_listener(self) -> None:
@@ -347,24 +399,24 @@ class Daemon:
 
     # ------------------------------------------------------------ transcrição
 
-    def _options(self) -> tuple[str | None, str, str | None]:
-        """Modelo, idioma e modo vigentes na interface; a falha não impede o ditado."""
-        model, language, mode = self.api.current_options()
+    def _options(self) -> tuple[str | None, str, str]:
+        """Modelo, idioma e perfil vigentes; a falha não impede o ditado."""
+        model, language, _mode, profile = self.api.current_options()
         return (
             model or self.model or None,
             language or self.language or "pt",
-            mode or self.mode or None,
+            profile or self.profile_current or "",
         )
 
     def _submit(self, path) -> Job:
-        model, language, mode = self._options()
+        model, language, profile = self._options()
         return self.api.create_job(
             path.read_bytes(),
             filename=path.name,
             content_type="audio/wav",
             model=model,
             language=language,
-            mode=mode,
+            profile=profile or None,
         )
 
     def _wait_for_terminal(self, job: Job) -> Job | None:
@@ -417,6 +469,8 @@ class Daemon:
             return self.state_snapshot()
         if command == "mode":
             return {"ok": self.set_mode(value or "")}
+        if command == "profile":
+            return {"ok": self.set_profile(value or "")}
         actions = {"show": self.show_ui, "toggle": self.toggle_listener, "quit": self.shutdown}
         action = actions.get(command)
         if action is None:

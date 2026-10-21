@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vb-typer-desktop"
-version = "0.1.0"
+version = "0.1.2"
 description = "Cliente desktop do VB Typer: ditado por atalho global usando a API REST local."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,10 @@ dev = [
     "pytest>=8.3",
     "respx>=0.21",
     "ruff>=0.7",
+]
+# Só para o AppImage: `scripts/build-appimage.sh` usa `uv run --extra build`.
+build = [
+    "pyinstaller>=6.10",
 ]
 
 [project.scripts]

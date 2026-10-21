@@ -17,13 +17,14 @@ uv run vb-typer-desktop --write-preferences   # cria o arquivo de preferências
 ```
 
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
-inserir. A bandeja mostra o estado (desativado, ativo, gravando, transcrevendo) e
-oferece *Abrir configurações*, *Iniciar/Parar ditado*, o **modo de transcrição**
-(*Modo literal* / *Modo inteligente*) e *Sair*.
+inserir. A bandeja mostra o estado (desativado, ativo, gravando, transcrevendo) e oferece
+*Abrir configurações*, *Iniciar/Parar ditado*, a **lista de perfis de texto**
+(o vigente com `✓`) e *Sair*.
 
-O modo escolhido pela bandeja é gravado no backend, o mesmo lugar onde a
-interface o edita — e a bandeja relê a configuração de tempos em tempos, então
-uma troca feita na tela aparece no menu sozinha.
+O perfil escolhido pela bandeja é gravado no backend (`default_profile`), o mesmo
+lugar onde a interface o edita — e a bandeja relê a configuração de tempos em
+tempos, então uma troca feita na tela aparece no menu sozinha. Perfis criados ou
+apagados na interface também aparecem/desaparecem sem reiniciar o cliente.
 
 Antes de usar, a API precisa estar no ar e com a chave configurada:
 
@@ -80,7 +81,7 @@ janela em foco — no terminal, cai junto do prompt onde o texto vai aparecer:
 
 | Fase | Desenho |
 |---|---|
-| Gravando | barra de nível: o preenchimento violeta cresce para a direita com a voz |
+| Gravando | onda colorida, como o medidor da tela Ditar (o mesmo gradiente) |
 | Transcrevendo | barra laranja varrendo (segmento que desliza) |
 | Inserido | ✓ verde, ~1 s |
 | Erro | ! vermelho, ~3 s |
@@ -91,16 +92,17 @@ atrapalha o aplicativo em uso. Não aparece em tela cheia.
 Quem decide o visual é o cliente; o helper (`tray/indicator.py`) só desenha o que
 recebe pelo socket de controle.
 
-A fase de gravação é uma **barra de nível ancorada à esquerda** (o mesmo
-vocabulário da tela Ditar do app), com um trilho discreto que a mantém visível no
-silêncio. Isso também é o que a distingue da fase "transcrevendo", que é uma
-barra **que desliza** — mesma família, movimento diferente. Quem preferir a onda
-de barras de volta usa `"shape": "wave"`.
+A fase de gravação é a **mesma onda da tela Ditar**: linha colorida com o
+gradiente do canvas web, desenhada a partir das amostras reais do microfone.
+Enquanto ainda não há amostras (o começo da captura), o helper desenha o envelope
+senoidal de repouso da web. Quem preferir a **barra de nível** ancorada à esquerda,
+com trilho e preenchimento, usa `"shape": "bar"`.
 
-A onda vem do **nível real do microfone** (`arecord -V mono`), não de uma
-animação: a captura usa `--period-size=256` para o nível sair a cada ~17 ms em vez
-de ~140 ms. O painel aparece em ~60 ms (consulta ociosa) e, já visível, consulta a
-cada 45 ms.
+A onda vem do **áudio real**: o cliente envia a janela recente da captura
+(512 quadros, 256 pontos) junto do estado, e o nível do medidor do `arecord`
+continua alimentando a barra opcional. A captura usa `--period-size=256` para o
+nível sair a cada ~17 ms em vez de ~140 ms. O painel aparece em ~60 ms (consulta
+ociosa) e, já visível, consulta a cada 45 ms.
 
 ### Preferências
 
@@ -115,7 +117,7 @@ cada 45 ms.
 | `size` | `40` | altura do painel em pixels (24 a 96) |
 | `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
 | `sensitivity` | `1.0` | quão altas ficam as barras para a mesma voz (0.5 a 3.0) |
-| `shape` | `bar` | desenho da fase de gravação: `bar` (barra de nível, como na tela web) ou `wave` (a onda de barras) |
+| `shape` | `wave` | desenho da fase de gravação: `wave` (a onda da tela Ditar) ou `bar` (barra de nível) |
 
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
 `sensitivity`. Mudanças valem no próximo start.
@@ -152,9 +154,12 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
   tamanho padrão e o painel sai gigante.
 - **O período da captura define a vida da onda.** O medidor do `arecord` sai a
   cada período de captura: o padrão dava ~7 atualizações por segundo (140 ms) e
-  deixava a onda lenta, por melhor que fosse a animação. Com
+  deixava o nível lento, por melhor que fosse a animação. Com
   `--period-size=256` são ~58 por segundo (17 ms). Se algum dispositivo reclamar
   de *xrun*, 512 (32 ms) é o meio-termo.
+- **A onda da web usa amostras, não o medidor.** O daemon lê a cauda do WAV em
+  andamento (`Recorder.waveform`, 512 quadros) e manda 256 pontos no estado; o
+  helper só desenha. A barra opcional (`shape: bar`) continua usando o nível.
 - **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
   ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
   linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,

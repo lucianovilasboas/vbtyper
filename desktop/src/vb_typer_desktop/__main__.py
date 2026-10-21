@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import shutil
 import signal
 import subprocess
@@ -177,7 +178,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="vb-typer-desktop", description="Ditado por voz por atalho global (Ctrl+Super)."
     )
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="endereço da API local")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("VB_TYPER_API_BASE_URL") or DEFAULT_BASE_URL,
+        help="endereço da API (padrão: VB_TYPER_API_BASE_URL ou a API local)",
+    )
     parser.add_argument("--status", action="store_true", help="mostrar o estado e sair")
     parser.add_argument("--self-test", action="store_true", help="verificar o ambiente sem ditar")
     parser.add_argument("--ui", action="store_true", help="abrir a interface ao iniciar")

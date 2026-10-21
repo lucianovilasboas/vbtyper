@@ -31,6 +31,27 @@ def icon_name(dictating: bool, recording: bool, blink: bool = False,
     return "tray_on" if dictating else "tray_off"
 
 
+PROFILE_MARK = " ✓"
+
+
+def profile_label(name: str, active: bool) -> str:
+    """Rótulo de um perfil: o vigente é marcado no próprio texto."""
+    return f"{name}{PROFILE_MARK}" if active else name
+
+
+def profile_signature(profiles) -> tuple[tuple[str, str], ...]:
+    """Pares ``(slug, nome)`` na ordem exibida — a chave de "a lista mudou"."""
+    signature = []
+    for item in profiles or ():
+        if not isinstance(item, dict):
+            continue
+        slug = str(item.get("slug") or "").strip()
+        if not slug:
+            continue
+        signature.append((slug, str(item.get("name") or slug)))
+    return tuple(signature)
+
+
 class Tray:
     def __init__(self, socket_path: str, assets: Path) -> None:
         import gi
@@ -66,22 +87,21 @@ class Tray:
         self.toggle_item.show()
         self.menu.append(self.toggle_item)
 
-        # --- acrescentado no 2.0: troca do modo de transcrição pela bandeja ---
-        # Itens simples, com o modo vigente marcado no próprio rótulo. Itens de
+        # --- acrescentado no 2.0: perfis de texto na bandeja ---
+        # Itens simples, com o perfil vigente marcado no próprio rótulo. Itens de
         # rádio foram descartados: o host do AppIndicator constrói o menu no
-        # primeiro uso e ativava um item sozinho, trocando o modo sem clique.
+        # primeiro uso e ativava um item sozinho, trocando a escolha sem clique.
         self.menu.append(self.Gtk.SeparatorMenuItem())
-        self.mode_items = {}
-        for value, label in (("literal", "Modo literal"), ("smart", "Modo inteligente")):
-            item = self.Gtk.MenuItem(label=label)
-            item.connect("activate", lambda *_, v=value: self._choose_mode(v))
-            item.show()
-            self.menu.append(item)
-            self.mode_items[value] = item
-        self.shown_mode = ""
-        # ---------------------------------------------------------------------
+        # Os perfis entram entre este separador e o de baixo: a lista muda quando
+        # alguém cria ou apaga um perfil na interface.
+        self.profile_base = len(self.menu.get_children())
+        self.profile_end = self.Gtk.SeparatorMenuItem()
+        self.menu.append(self.profile_end)
+        self.profile_items = {}
+        self.shown_profiles = ()
+        self.shown_profile = ""
+        # -----------------------------------------------------
 
-        self.menu.append(self.Gtk.SeparatorMenuItem())
         quit_item = self.Gtk.MenuItem(label="Sair")
         quit_item.connect("activate", lambda *_: self.send("quit"))
         quit_item.show()
@@ -105,7 +125,7 @@ class Tray:
                 client.settimeout(1.5)
                 client.connect(self.socket_path)
                 client.sendall((json.dumps(payload) + "\n").encode())
-                data = client.recv(4096)
+                data = client.recv(65536)
             return json.loads(data.decode() or "{}")
         except (OSError, ValueError):
             return {}
@@ -143,21 +163,35 @@ class Tray:
             self.last_state = marker
             self.indicator.set_icon_full(self.icon_path(icon), tooltip)
             self.toggle_item.set_label("Parar ditado" if dictating else "Iniciar ditado")
-        self._sync_mode(str(state.get("mode") or "literal"))
+        self._sync_profiles(state.get("profiles") or (), str(state.get("profile") or ""))
         return True
 
-    def _sync_mode(self, mode: str) -> None:
-        """Marca no menu o modo vigente (pode ter sido trocado pela interface)."""
-        if mode == self.shown_mode:
-            return
-        self.shown_mode = mode
-        for value, item in self.mode_items.items():
-            base = "Modo literal" if value == "literal" else "Modo inteligente"
-            item.set_label(f"{base} ✓" if value == mode else base)
+    def _sync_profiles(self, profiles, current: str) -> None:
+        """Acompanha a lista de perfis, que muda quando alguém edita na interface."""
+        signature = profile_signature(profiles)
+        if signature != self.shown_profiles:
+            self.shown_profiles = signature
+            for item in self.profile_items.values():
+                self.menu.remove(item)
+            self.profile_items.clear()
+            for offset, (slug, name) in enumerate(signature):
+                item = self.Gtk.MenuItem(label=name)
+                item.connect("activate", lambda *_, s=slug: self.send("profile", s))
+                item.show()
+                self.menu.insert(item, self.profile_base + offset)
+                self.profile_items[slug] = item
+            self.shown_profile = ""  # a lista mudou: remarca o vigente
+        self._sync_profile(current)
 
-    def _choose_mode(self, value: str) -> None:
-        """Clique do usuário no item de modo."""
-        self.send("mode", value)
+    def _sync_profile(self, current: str) -> None:
+        """Marca no menu o perfil vigente (pode ter sido trocado na interface)."""
+        if current == self.shown_profile:
+            return
+        self.shown_profile = current
+        for slug, name in self.shown_profiles:
+            item = self.profile_items.get(slug)
+            if item is not None:
+                item.set_label(profile_label(name, slug == current))
 
 
 def main() -> int:

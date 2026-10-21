@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -487,3 +489,127 @@ def test_a_backend_failure_keeps_the_previous_mode():
     assert agent.control_command("mode", "smart") == {"ok": False}
     assert agent.current_mode == "literal"
     assert any(urgency == "critical" for _, _, urgency in notifications)
+
+
+# -------------------------------------------------------------------- perfis
+
+
+def test_refresh_options_reads_the_profiles_and_the_default():
+    api = FakeApi(default_profile="email")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.current_profile == "email"
+    snapshot = agent.state_snapshot()
+    assert snapshot["profile"] == "email"
+    assert snapshot["profiles"] == FakeApi.DEFAULT_PROFILES
+
+
+def test_job_sends_the_profile_instead_of_the_mode(make_wav, tmp_path):
+    api = FakeApi(default_profile="email")
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert api.uploads[0]["profile"] == "email"
+    assert api.uploads[0]["mode"] is None
+
+
+def test_tray_can_switch_the_profile_and_it_goes_to_the_backend():
+    """A troca pela bandeja grava no backend: é lá que a escolha mora."""
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.control_command("profile", "email") == {"ok": True}
+    assert api.patched == [{"default_profile": "email"}]
+    assert agent.current_profile == "email"
+    assert agent.state_snapshot()["profile"] == "email"
+
+
+def test_unknown_profile_is_refused_without_calling_the_backend():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.control_command("profile", "inexistente") == {"ok": False}
+    assert api.patched == []
+
+
+def test_a_backend_failure_keeps_the_previous_profile():
+    from vb_typer_desktop.api import ApiError
+
+    def explode(changes):
+        raise ApiError("API fora do ar")
+
+    api = FakeApi(default_profile="literal")
+    api.patch_settings = explode
+    agent, notifications = build(api=api)
+    agent.refresh_options()
+
+    assert agent.control_command("profile", "email") == {"ok": False}
+    assert agent.current_profile == "literal"
+    assert any(urgency == "critical" for _, _, urgency in notifications)
+
+
+def test_a_profile_deleted_in_the_interface_falls_back_to_literal():
+    api = FakeApi(default_profile="email")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+    api.profiles = [{"slug": "literal", "name": "Transcrição fiel"}]
+
+    agent.refresh_options()
+
+    assert agent.current_profile == "literal"
+    assert [item["slug"] for item in agent.profiles] == ["literal"]
+
+
+def test_a_failed_refresh_never_empties_the_tray_menu():
+    api = FakeApi(default_profile="email")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+    api.list_profiles = lambda: []
+    api.current_options = lambda: ("", "", "", "")
+
+    agent.refresh_options()
+
+    assert agent.current_profile == "email"
+    assert agent.profiles == FakeApi.DEFAULT_PROFILES
+
+
+# ------------------------------------------------------------------- onda
+
+
+def test_snapshot_carries_the_waveform_while_recording():
+    agent, _ = build()
+    recorder = FakeRecorder(Path("captura.wav"))
+    agent.recorder = recorder
+
+    assert agent.state_snapshot()["waveform"] == recorder.waveform_data
+
+
+def test_waveform_is_not_sent_while_idle():
+    agent, _ = build()
+
+    assert "waveform" not in agent.state_snapshot()
+
+
+def test_waveform_is_skipped_when_the_shape_is_the_bar():
+    agent, _ = build(preferences=Preferences(shape="bar"))
+    agent.recorder = FakeRecorder(Path("captura.wav"))
+
+    assert "waveform" not in agent.state_snapshot()
+
+
+def test_waveform_is_skipped_without_the_visual_indicator():
+    agent, _ = build(preferences=Preferences(notices="none"))
+    agent.recorder = FakeRecorder(Path("captura.wav"))
+
+    assert "waveform" not in agent.state_snapshot()
+
+
+def test_recorder_without_waveform_is_tolerated():
+    """Um gravador de outra plataforma pode não oferecer a onda."""
+    agent, _ = build()
+    agent.recorder = SimpleNamespace(level=5)
+
+    assert "waveform" not in agent.state_snapshot()

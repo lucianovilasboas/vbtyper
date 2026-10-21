@@ -66,7 +66,7 @@ def start_indicator(
     socket_path: Path,
     speed: float = 1.0,
     sensitivity: float = 1.0,
-    shape: str = "bar",
+    shape: str = "wave",
 ) -> subprocess.Popen[bytes] | None:
     """Sobe o indicador visual; ``None`` quando o ambiente não o suporta."""
     if not indicator_available():

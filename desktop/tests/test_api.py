@@ -36,14 +36,20 @@ def test_create_job_sends_multipart_with_bearer():
     )
     client = api.ApiClient(token="segredo")
     job = client.create_job(
-        b"RIFF", "audio.wav", "audio/wav", model="gpt-transcribe", language="pt", mode="smart"
+        b"RIFF",
+        "audio.wav",
+        "audio/wav",
+        model="gpt-transcribe",
+        language="pt",
+        profile="email",
     )
     assert (job.id, job.status) == ("job-1", "queued")
     request = route.calls[0].request
     assert request.headers["authorization"] == "Bearer segredo"
     assert b'name="model"' in request.content
     assert b"gpt-transcribe" in request.content
-    assert b"smart" in request.content
+    assert b'name="profile"' in request.content
+    assert b"email" in request.content
     assert b'filename="audio.wav"' in request.content
     client.close()
 
@@ -54,7 +60,9 @@ def test_create_job_omits_empty_options():
         return_value=httpx.Response(202, json={"id": "job-1", "status": "queued"})
     )
     api.ApiClient(token="t").create_job(b"RIFF", "a.wav", "audio/wav")
-    assert b'name="model"' not in route.calls[0].request.content
+    content = route.calls[0].request.content
+    assert b'name="model"' not in content
+    assert b'name="profile"' not in content
 
 
 @respx.mock
@@ -139,7 +147,7 @@ def test_network_failure_becomes_api_error():
 @respx.mock
 def test_current_options_falls_back_on_failure():
     respx.get(f"{BASE}/api/v1/settings").mock(side_effect=httpx.ConnectError("off"))
-    assert api.ApiClient(token="t").current_options() == ("", "", "")
+    assert api.ApiClient(token="t").current_options() == ("", "", "", "")
 
 
 @respx.mock
@@ -151,11 +159,46 @@ def test_current_options_read_settings():
                 "model": "gpt-transcribe",
                 "language": "en",
                 "mode": "smart",
+                "default_profile": "email",
                 "api_key_configured": True,
             },
         )
     )
-    assert api.ApiClient(token="t").current_options() == ("gpt-transcribe", "en", "smart")
+    assert api.ApiClient(token="t").current_options() == (
+        "gpt-transcribe",
+        "en",
+        "smart",
+        "email",
+    )
+
+
+@respx.mock
+def test_list_profiles_keeps_only_slug_and_name():
+    respx.get(f"{BASE}/api/v1/profiles").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "slug": "literal",
+                    "name": "Transcrição fiel",
+                    "instructions": "",
+                    "builtin": True,
+                },
+                {"slug": "email", "name": "E-mail profissional", "instructions": "…"},
+                {"name": "sem slug"},
+            ],
+        )
+    )
+    assert api.ApiClient(token="t").list_profiles() == [
+        {"slug": "literal", "name": "Transcrição fiel"},
+        {"slug": "email", "name": "E-mail profissional"},
+    ]
+
+
+@respx.mock
+def test_list_profiles_falls_back_to_empty_on_failure():
+    respx.get(f"{BASE}/api/v1/profiles").mock(side_effect=httpx.ConnectError("off"))
+    assert api.ApiClient(token="t").list_profiles() == []
 
 
 def test_no_token_means_no_authorization_header():

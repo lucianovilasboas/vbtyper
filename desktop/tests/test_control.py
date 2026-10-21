@@ -44,7 +44,7 @@ def test_socket_name_differs_from_the_1x_app():
 
 
 def test_value_travels_with_the_command():
-    """A bandeja manda o modo escolhido junto do comando."""
+    """A bandeja manda o perfil escolhido junto do comando."""
     seen: list[tuple[str, object]] = []
 
     def handler(command: str, value=None):
@@ -60,8 +60,8 @@ def test_value_travels_with_the_command():
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(2)
             client.connect(str(control_socket_path()))
-            client.sendall((json.dumps({"cmd": "mode", "value": "smart"}) + "\n").encode())
-            client.recv(4096)
+            client.sendall((json.dumps({"cmd": "profile", "value": "email"}) + "\n").encode())
+            client.recv(65536)
     finally:
         server.stop()
-    assert seen == [("mode", "smart")]
+    assert seen == [("profile", "email")]
