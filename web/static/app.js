@@ -16,11 +16,6 @@ const REFRESH_INTERVAL_MS = 10_000;
 const HEATMAP_DAYS = 91;
 const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-const MODE_LABEL = { literal: "Literal", smart: "Inteligente" };
-const MODE_HELP = {
-  literal: "Literal entrega exatamente o que foi reconhecido.",
-  smart: "Inteligente ajusta datas, números, valores e siglas (18/10/2025, R$ 50,20, 30%).",
-};
 
 const number = new Intl.NumberFormat("pt-BR");
 const money = new Intl.NumberFormat("pt-BR", {
@@ -46,6 +41,8 @@ const state = {
   metric: "words",
   series: [],
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
+  profiles: [],
+  profileEditing: null,
   theme: localStorage.getItem(THEME_KEY) || "auto",
   loaded: new Set(),
   view: "dictate",
@@ -229,7 +226,7 @@ async function submit(blob, duration) {
     const job = await api.createJob(blob, {
       model: state.settings.model,
       language: state.settings.language,
-      mode: state.settings.mode,
+      profile: state.settings.default_profile,
       duration,
     });
     state.jobId = job.id;
@@ -330,7 +327,7 @@ async function copyTranscript() {
 function renderSettingChips() {
   $("chip-model").textContent = state.settings.model || "—";
   $("chip-language").textContent = state.settings.language || "—";
-  $("chip-mode").textContent = MODE_LABEL[state.settings.mode] || state.settings.mode || "—";
+  $("profile").value = state.settings.default_profile || "literal";
 }
 
 async function loadSettings() {
@@ -346,8 +343,8 @@ async function loadSettings() {
   }
   select.value = settings.model;
   $("language").value = settings.language;
-  $("mode").value = settings.mode;
-  $("mode-help").textContent = MODE_HELP[settings.mode] || MODE_HELP.literal;
+  if ($("default-profile")) $("default-profile").value = settings.default_profile;
+  renderProfileOptions();
   $("week-start").value = settings.week_start;
   renderSettingChips();
   renderKeyBadge(settings.api_key_configured);
@@ -367,8 +364,161 @@ async function saveSetting(changes) {
     const updated = await api.patchSettings(changes);
     state.settings = { ...state.settings, ...updated };
     renderSettingChips();
-    if (updated.mode) $("mode-help").textContent = MODE_HELP[updated.mode] || MODE_HELP.literal;
     state.loaded.delete("activity");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+// --- perfis de texto --------------------------------------------------------
+
+function profileName(slug) {
+  const found = state.profiles.find((profile) => profile.slug === slug);
+  return found ? found.name : slug;
+}
+
+async function loadProfiles() {
+  state.profiles = await api.listProfiles();
+  renderProfileOptions();
+  renderProfilesList();
+}
+
+function renderProfileOptions() {
+  for (const id of ["profile", "default-profile"]) {
+    const select = $(id);
+    if (!select) continue;
+    select.replaceChildren();
+    for (const profile of state.profiles) {
+      const option = document.createElement("option");
+      option.value = profile.slug;
+      option.textContent = profile.name;
+      select.append(option);
+    }
+    select.value = state.settings.default_profile || "literal";
+  }
+}
+
+function renderProfilesList() {
+  const host = $("profiles-list");
+  if (!host) return;
+  host.replaceChildren();
+
+  for (const profile of state.profiles) {
+    const row = document.createElement("div");
+    row.className = "profile-row";
+
+    const name = document.createElement("span");
+    name.className = "profile-name";
+    name.textContent = profile.name;
+    if (profile.builtin) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "embutido";
+      name.append(badge);
+    }
+    row.append(name);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    if (state.settings.default_profile !== profile.slug) {
+      const use = document.createElement("button");
+      use.type = "button";
+      use.textContent = "usar como padrão";
+      use.addEventListener("click", async () => {
+        await saveSetting({ default_profile: profile.slug });
+        renderProfilesList();
+      });
+      actions.append(use);
+    }
+
+    const duplicate = document.createElement("button");
+    duplicate.type = "button";
+    duplicate.textContent = "duplicar";
+    duplicate.addEventListener("click", async () => {
+      try {
+        await api.createProfile({
+          name: `${profile.name} (cópia)`,
+          instructions:
+            profile.instructions ||
+            "Descreva o que este perfil deve fazer com o texto ditado, sem inventar informação.",
+          hint: profile.hint || null,
+          options: profile.options || {},
+        });
+        await loadProfiles();
+        setStatus("Perfil duplicado: ajuste as instruções na cópia.", "ok");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+    actions.append(duplicate);
+
+    if (!profile.builtin) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "editar";
+      edit.addEventListener("click", () => openProfileEditor(profile));
+      actions.append(edit);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "excluir";
+      remove.addEventListener("click", async () => {
+        try {
+          await api.deleteProfile(profile.slug);
+          if (state.settings.default_profile === profile.slug) {
+            await saveSetting({ default_profile: "literal" });
+          }
+          await loadProfiles();
+          setStatus("Perfil removido.", "ok");
+        } catch (error) {
+          setStatus(error.message, "error");
+        }
+      });
+      actions.append(remove);
+    }
+
+    row.append(actions);
+    host.append(row);
+  }
+}
+
+function openProfileEditor(profile) {
+  state.profileEditing = profile ? profile.slug : null;
+  $("profile-editor").hidden = false;
+  $("profile-name").value = profile ? profile.name : "";
+  $("profile-instructions").value = profile ? profile.instructions : "";
+  $("profile-tone").value = (profile && profile.options && profile.options.tom) || "";
+  $("profile-concision").value =
+    (profile && profile.options && profile.options.concisao) || "";
+  $("profile-terms").checked = Boolean(
+    profile && profile.options && profile.options.preservar_termos
+  );
+  $("profile-name").focus();
+}
+
+function closeProfileEditor() {
+  state.profileEditing = null;
+  $("profile-editor").hidden = true;
+}
+
+async function saveProfile() {
+  const name = $("profile-name").value.trim();
+  const instructions = $("profile-instructions").value.trim();
+  const options = {};
+  if ($("profile-tone").value) options.tom = $("profile-tone").value;
+  if ($("profile-concision").value) options.concisao = $("profile-concision").value;
+  if ($("profile-terms").checked) options.preservar_termos = true;
+
+  try {
+    if (state.profileEditing) {
+      await api.patchProfile(state.profileEditing, { name, instructions, options });
+    } else {
+      await api.createProfile({ name, instructions, options });
+    }
+    closeProfileEditor();
+    await loadProfiles();
+    setStatus("Perfil salvo.", "ok");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -506,10 +656,86 @@ function historyRow(item) {
     }
   });
 
-  group.append(copy, remove);
+  const versions = document.createElement("button");
+  versions.type = "button";
+  versions.textContent = "Versões";
+  versions.addEventListener("click", async () => {
+    try {
+      const existing = body.querySelector(".versions");
+      if (existing) {
+        existing.remove();
+        return;
+      }
+      const detail = await api.getTranscription(item.id);
+      body.append(versionToolbar(item, detail, text, row));
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  group.append(versions, copy, remove);
   actions.append(group);
   row.append(actions);
   return row;
+}
+
+/**
+ * Barra da linha do histórico: alterna entre as versões já geradas e pede uma
+ * nova a partir do texto reconhecido (`raw_text`, no servidor).
+ */
+function versionToolbar(item, detail, textEl, row) {
+  const bar = document.createElement("div");
+  bar.className = "versions";
+
+  const pick = document.createElement("select");
+  const literal = document.createElement("option");
+  literal.value = "literal";
+  literal.textContent = "Literal (original)";
+  pick.append(literal);
+  for (const version of detail.versions || []) {
+    const option = document.createElement("option");
+    option.value = String(version.id);
+    option.textContent = `${profileName(version.profile)} · ${shortStamp(version.created_at)} · ${formatCost(version.cost_usd)}`;
+    pick.append(option);
+  }
+  const last = (detail.versions || [])[(detail.versions || []).length - 1];
+  pick.value = last ? String(last.id) : "literal";
+  pick.addEventListener("change", () => {
+    const chosen = (detail.versions || []).find((version) => String(version.id) === pick.value);
+    textEl.textContent = chosen ? chosen.text : detail.raw_text || detail.text;
+  });
+  bar.append(pick);
+
+  const generate = document.createElement("select");
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "gerar versão…";
+  generate.append(placeholder);
+  for (const profile of state.profiles) {
+    if (profile.slug === "literal") continue;
+    const option = document.createElement("option");
+    option.value = profile.slug;
+    option.textContent = profile.name;
+    generate.append(option);
+  }
+  generate.addEventListener("change", async () => {
+    if (!generate.value) return;
+    const slug = generate.value;
+    generate.disabled = true;
+    setStatus(`Gerando versão com ${profileName(slug)}…`, "busy");
+    try {
+      const updated = await api.renderTranscription(item.id, slug);
+      row.replaceWith(historyRow(updated));
+      setStatus(`Versão gerada com ${profileName(slug)}.`, "ok");
+      state.loaded.delete("activity");
+    } catch (error) {
+      setStatus(error.message, "error");
+      generate.disabled = false;
+      generate.value = "";
+    }
+  });
+  bar.append(generate);
+  return bar;
 }
 
 async function loadHistorySummary() {
@@ -759,6 +985,7 @@ function loadSettingsTab() {
   if (state.loaded.has("settings")) return;
   state.loaded.add("settings");
   loadSettings().catch((error) => setStatus(error.message, "error"));
+  loadProfiles().catch((error) => setStatus(error.message, "error"));
   loadAbout();
 }
 
@@ -948,10 +1175,19 @@ function bindEvents() {
   });
 
   $("model").addEventListener("change", () => saveSetting({ model: $("model").value }));
-  $("mode").addEventListener("change", async () => {
-    await saveSetting({ mode: $("mode").value });
+  $("profile").addEventListener("change", async () => {
+    await saveSetting({ default_profile: $("profile").value });
+    renderProfilesList();
     state.loaded.delete("history");
   });
+  $("default-profile").addEventListener("change", async () => {
+    await saveSetting({ default_profile: $("default-profile").value });
+    renderProfilesList();
+    state.loaded.delete("history");
+  });
+  $("profile-new").addEventListener("click", () => openProfileEditor(null));
+  $("profile-cancel").addEventListener("click", closeProfileEditor);
+  $("profile-save").addEventListener("click", saveProfile);
   $("language").addEventListener("input", scheduleLanguageSave);
   $("week-start").addEventListener("change", async () => {
     await saveSetting({ week_start: $("week-start").value });
@@ -1003,6 +1239,7 @@ async function init() {
     // Carrega os valores efetivos para os chips da tela Ditar; a tela de
     // configurações recarrega e completa com o "Sobre" quando for aberta.
     await loadSettings();
+    await loadProfiles();
   } catch (error) {
     setStatus(error.message, "error");
   }

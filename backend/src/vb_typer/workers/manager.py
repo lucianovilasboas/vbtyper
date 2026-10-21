@@ -14,7 +14,14 @@ from vb_typer.adapters.openai import OpenAIAdapter
 from vb_typer.core.config import AppSettings
 from vb_typer.domain.enums import TranscriptionMode
 from vb_typer.domain.errors import DomainError, ProviderError
-from vb_typer.services.normalize import INSTRUCTIONS, needs_normalization, smart_hint
+from vb_typer.domain.profiles import (
+    LITERAL_SLUG,
+    REVISED_SLUG,
+    compose_instructions,
+    is_literal,
+)
+from vb_typer.services.normalize import needs_normalization
+from vb_typer.services.profiles import ProfileService
 from vb_typer.services.transcription import JobContext, TranscriptionService
 
 logger = logging.getLogger(__name__)
@@ -22,11 +29,16 @@ logger = logging.getLogger(__name__)
 
 class JobManager:
     def __init__(
-        self, service: TranscriptionService, openai: OpenAIAdapter, settings: AppSettings
+        self,
+        service: TranscriptionService,
+        openai: OpenAIAdapter,
+        settings: AppSettings,
+        profiles: ProfileService,
     ) -> None:
         self.service = service
         self.openai = openai
         self.settings = settings
+        self.profiles = profiles
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.workers: list[asyncio.Task] = []
         self.running: dict[str, asyncio.Task] = {}
@@ -56,28 +68,32 @@ class JobManager:
     async def submit(self, job_id: str) -> None:
         await self.queue.put(job_id)
 
-    async def _maybe_adjust(self, text: str, context: JobContext, api_key: str) -> tuple[str, str]:
-        """Aplica o modo inteligente; devolve ``(texto, modo entregue)``.
+    async def _apply_profile(
+        self, text: str, context: JobContext, profile, api_key: str
+    ) -> tuple[str, str, dict | None, str]:
+        """Aplica o perfil do job; devolve ``(texto, modo, usage, perfil entregue)``.
 
-        Falha no ajuste **não** perde o ditado: devolve o texto literal e registra
-        o motivo no log. Nesse caso o modo entregue é ``literal`` — é o que o
-        histórico passa a mostrar, para o usuário saber que não foi ajustado.
+        Falha no perfil **não** perde o ditado: devolve o texto literal e registra
+        o motivo no log. Nesse caso o perfil entregue é ``literal`` — é o que o
+        histórico passa a mostrar, para o usuário saber que não foi transformado.
         """
-        if context.mode != TranscriptionMode.SMART:
-            return text, TranscriptionMode.LITERAL
-        if not needs_normalization(text):
-            return text, TranscriptionMode.SMART
+        if is_literal(profile.slug):
+            return text, TranscriptionMode.LITERAL, None, LITERAL_SLUG
+        # O filtro conservador só vale para o "Texto revisado": os perfis
+        # editoriais sempre têm o que fazer.
+        if profile.slug == REVISED_SLUG and not needs_normalization(text):
+            return text, TranscriptionMode.SMART, None, profile.slug
         try:
-            adjusted = await self.openai.normalize(
+            adjusted, usage = await self.openai.normalize(
                 text=text,
                 model=self.settings.smart_model,
-                instructions=INSTRUCTIONS,
+                instructions=compose_instructions(profile),
                 api_key=api_key,
             )
         except DomainError as exc:
-            logger.warning("Ajuste do modo inteligente falhou (job %s): %s", context.id, exc)
-            return text, TranscriptionMode.LITERAL
-        return adjusted or text, TranscriptionMode.SMART
+            logger.warning("Perfil %s falhou (job %s): %s", profile.slug, context.id, exc)
+            return text, TranscriptionMode.LITERAL, None, LITERAL_SLUG
+        return adjusted or text, TranscriptionMode.SMART, usage, profile.slug
 
     async def cancel(self, job_id: str) -> None:
         await asyncio.to_thread(self.service.request_cancel, job_id)
@@ -113,6 +129,7 @@ class JobManager:
         try:
             audio = await asyncio.to_thread(self.service.read_audio, context)
             api_key = await asyncio.to_thread(self.service.secrets.get_api_key)
+            profile = await asyncio.to_thread(self.profiles.get, context.profile)
             started = time.monotonic()
             result = await self.openai.transcribe(
                 audio=audio,
@@ -121,19 +138,24 @@ class JobManager:
                 model=context.model,
                 language=context.language,
                 api_key=api_key,
-                prompt=smart_hint(context.mode),
+                prompt=None if is_literal(profile.slug) else profile.hint,
             )
             transcribe_ms = int((time.monotonic() - started) * 1000)
             text = (result.get("text") or "").strip()
             if not text:
                 raise ProviderError("A API não reconheceu fala nesse áudio.")
-            text, mode = await self._maybe_adjust(text, context, api_key)
+            text, mode, usage, delivered = await self._apply_profile(
+                text, context, profile, api_key
+            )
             await asyncio.to_thread(
                 self.service.finish_success,
                 job_id,
                 text=text,
                 raw_text=(result.get("text") or "").strip(),
                 mode=mode,
+                profile=delivered,
+                usage=usage,
+                text_model=self.settings.smart_model,
                 duration_s=context.duration_s,
                 transcribe_ms=transcribe_ms,
             )

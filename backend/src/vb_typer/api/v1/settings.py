@@ -18,6 +18,7 @@ def _read(container: ContainerDep) -> SettingsRead:
         model=row.model,
         language=row.language,
         mode=row.mode,
+        default_profile=row.default_profile,
         week_start=row.week_start,
         api_key_configured=container.transcription.api_key_present(),
         allowed_models=list(container.settings.allowed_models),
@@ -36,6 +37,7 @@ def update_settings(payload: SettingsUpdate, container: ContainerDep) -> Setting
         model=payload.model,
         language=payload.language,
         mode=payload.mode,
+        default_profile=payload.default_profile,
         week_start=payload.week_start,
     )
     return _read(container)

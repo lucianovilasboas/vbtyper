@@ -61,7 +61,9 @@ def _error_response(request: Request, status_code: int, code: str, message: str)
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     container = app.state.container
-    manager = JobManager(container.transcription, container.openai, container.settings)
+    manager = JobManager(
+        container.transcription, container.openai, container.settings, container.profiles
+    )
     app.state.manager = manager
     await manager.start()
     logger.info(

@@ -56,12 +56,22 @@ export const api = {
   patchSettings: (changes) => request("/settings", { method: "PATCH", body: changes }),
   testConnection: () => request("/settings/test", { method: "POST" }),
 
-  createJob(file, { model, language, mode, duration } = {}) {
+  listProfiles: () => request("/profiles"),
+  createProfile: (body) => request("/profiles", { method: "POST", body }),
+  patchProfile: (slug, body) =>
+    request(`/profiles/${encodeURIComponent(slug)}`, { method: "PATCH", body }),
+  deleteProfile: (slug) =>
+    request(`/profiles/${encodeURIComponent(slug)}`, { method: "DELETE" }),
+  renderTranscription: (id, profile) =>
+    request(`/transcriptions/${id}/render`, { method: "POST", body: { profile } }),
+
+  createJob(file, { model, language, mode, profile, duration } = {}) {
     const form = new FormData();
     form.append("file", file, file.name || "gravacao.webm");
     if (model) form.append("model", model);
     if (language) form.append("language", language);
     if (mode) form.append("mode", mode);
+    if (profile) form.append("profile", profile);
     // WebM/OGG não trazem a duração no cabeçalho: quem sabe é o cronômetro do
     // navegador. O backend só usa isto quando não consegue ler do arquivo.
     if (Number.isFinite(duration) && duration > 0) {

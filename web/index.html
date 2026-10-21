@@ -67,7 +67,7 @@
           <div class="hotkey">
             <span class="key" id="chip-model">—</span>
             <span class="key" id="chip-language">—</span>
-            <span class="key" id="chip-mode">—</span>
+            <select class="key" id="profile" aria-label="Perfil de texto"></select>
             <button class="ghost small" id="go-settings" type="button">Ajustar</button>
           </div>
           <p class="theme-help" id="key-state"></p>
@@ -245,11 +245,8 @@
               <input id="language" type="text" maxlength="16" placeholder="pt" autocomplete="off">
             </div>
             <div class="field-row">
-              <div>Modo de transcrição<span id="mode-help">Literal entrega exatamente o que foi reconhecido.</span></div>
-              <select id="mode">
-                <option value="literal">Literal</option>
-                <option value="smart">Inteligente</option>
-              </select>
+              <div>Perfil de texto<span>O que fazer com o ditado. "Transcrição fiel" entrega as palavras como foram ditas; os demais perfis passam por uma segunda chamada.</span></div>
+              <select id="default-profile"></select>
             </div>
             <div class="field-row">
               <div>Início da semana<span>Como as semanas são agrupadas no histórico e nas estatísticas.</span></div>
@@ -267,6 +264,48 @@
             <p class="theme-help">
               O ditado por atalho é do cliente desktop. Esta tela grava pelo microfone do navegador.
             </p>
+          </div>
+
+          <h2 id="s-profiles">Perfis de texto</h2>
+          <div class="settings-card">
+            <p class="theme-help">
+              Os perfis embutidos são somente leitura: duplique para ajustar. Todo perfil editorial
+              parte do texto reconhecido, nunca de outra versão já editada.
+            </p>
+            <div class="profiles-list" id="profiles-list"></div>
+            <div class="actions">
+              <button id="profile-new" class="ghost" type="button">Novo perfil</button>
+            </div>
+            <div class="profile-editor" id="profile-editor" hidden>
+              <input id="profile-name" type="text" maxlength="60" placeholder="Nome do perfil" autocomplete="off">
+              <textarea id="profile-instructions" maxlength="8000"
+                        placeholder="Instruções: o que fazer com o texto ditado. Ex.: organize em tópicos, sem inventar."></textarea>
+              <div class="profile-options">
+                <label>Tom
+                  <select id="profile-tone">
+                    <option value="">padrão</option>
+                    <option value="formal">formal</option>
+                    <option value="neutro">neutro</option>
+                    <option value="informal">informal</option>
+                  </select>
+                </label>
+                <label>Concisão
+                  <select id="profile-concision">
+                    <option value="">padrão</option>
+                    <option value="curto">curta</option>
+                    <option value="normal">normal</option>
+                    <option value="detalhado">detalhada</option>
+                  </select>
+                </label>
+                <label class="check">
+                  <input id="profile-terms" type="checkbox"> preservar termos técnicos
+                </label>
+              </div>
+              <div class="actions">
+                <button id="profile-save" class="primary" type="button">Salvar</button>
+                <button id="profile-cancel" class="ghost" type="button">Cancelar</button>
+              </div>
+            </div>
           </div>
 
           <h2 id="s-credential">Credencial</h2>

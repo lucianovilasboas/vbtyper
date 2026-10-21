@@ -83,8 +83,10 @@ class OpenAIAdapter:
             raise ProviderError("A resposta da OpenAI não contém texto de transcrição.")
         return {"text": text}
 
-    async def normalize(self, *, text: str, model: str, instructions: str, api_key: str) -> str:
-        """Ajusta um texto já transcrito (modo inteligente); não usa áudio."""
+    async def normalize(
+        self, *, text: str, model: str, instructions: str, api_key: str
+    ) -> tuple[str, dict]:
+        """Aplica um perfil a um texto já transcrito; devolve ``(texto, usage)``."""
         if not api_key:
             raise ApiKeyMissingError("Chave OpenAI ausente. Configure-a no cofre do sistema.")
         body = {
@@ -111,7 +113,8 @@ class OpenAIAdapter:
         adjusted = message.get("content") if isinstance(message, dict) else None
         if not isinstance(adjusted, str) or not adjusted.strip():
             raise ProviderError("O ajuste do texto voltou vazio.")
-        return adjusted.strip()
+        usage = payload.get("usage") if isinstance(payload, dict) else None
+        return adjusted.strip(), usage if isinstance(usage, dict) else {}
 
     async def check(self, api_key: str) -> int:
         """GET somente leitura em ``/models``; devolve a quantidade de modelos."""

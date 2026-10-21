@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from vb_typer.core.config import TRANSCRIPTION_MODES, WEEK_STARTS, AppSettings
 from vb_typer.core.timeutil import local_stamp
-from vb_typer.db.models import AppSetting
+from vb_typer.db.models import AppSetting, Profile
 from vb_typer.domain.errors import DomainError, InvalidModelError
+from vb_typer.domain.profiles import BUILTIN_BY_SLUG, LITERAL_SLUG, REVISED_SLUG
 
 
 class SettingsService:
@@ -24,6 +26,7 @@ class SettingsService:
                     model=self.settings.default_model,
                     language=self.settings.default_language,
                     mode=self.settings.default_mode,
+                    default_profile=self.settings.default_mode,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -38,6 +41,7 @@ class SettingsService:
         model: str | None = None,
         language: str | None = None,
         mode: str | None = None,
+        default_profile: str | None = None,
         week_start: str | None = None,
     ) -> AppSetting:
         with self.session_factory() as session:
@@ -48,6 +52,7 @@ class SettingsService:
                     model=self.settings.default_model,
                     language=self.settings.default_language,
                     mode=self.settings.default_mode,
+                    default_profile=self.settings.default_mode,
                     week_start=self.settings.week_start,
                     updated_at=local_stamp(),
                 )
@@ -70,6 +75,14 @@ class SettingsService:
                         f"Modo inválido. Use um de: {TRANSCRIPTION_MODES}.", code="invalid_mode"
                     )
                 row.mode = normalized
+                # Cliente antigo escolhendo modo: reflete no perfil padrão.
+                row.default_profile = LITERAL_SLUG if normalized == "literal" else REVISED_SLUG
+            if default_profile is not None:
+                normalized = default_profile.strip().lower()
+                if not self._profile_exists(session, normalized):
+                    raise DomainError(f"Perfil inválido: {normalized}.", code="invalid_profile")
+                row.default_profile = normalized
+                row.mode = LITERAL_SLUG if normalized == LITERAL_SLUG else "smart"
             if week_start is not None:
                 normalized = week_start.strip().lower()
                 if normalized not in WEEK_STARTS:
@@ -81,3 +94,9 @@ class SettingsService:
             session.commit()
             session.refresh(row)
             return row
+
+    @staticmethod
+    def _profile_exists(session: Session, slug: str) -> bool:
+        if slug in BUILTIN_BY_SLUG:
+            return True
+        return session.scalar(select(Profile).where(Profile.slug == slug)) is not None
