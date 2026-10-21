@@ -278,7 +278,7 @@ details.raw p { margin: 6px 0 0; }
 select.key { padding: 3px 6px; color: var(--ink); }
 
 /* Select de perfil na aba Ditar: nativo e óbvio, não um chip. */
-.profile-select {
+.quick-select {
   border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: 7px;
@@ -289,7 +289,7 @@ select.key { padding: 3px 6px; color: var(--ink); }
   font-weight: 600;
   cursor: pointer;
 }
-.profile-select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.quick-select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 
 /* --------------------------------------------------------------- perfis */
 

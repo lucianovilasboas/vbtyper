@@ -252,3 +252,42 @@ async def test_job_with_profile_creates_a_version(
     assert versions[0]["profile"] == "email"
     assert versions[0]["prompt_tokens"] == 50
     assert versions[0]["cost_usd"] > 0
+
+    # A fase some quando o job termina.
+    assert job["phase"] == ""
+
+
+def test_claim_marks_the_transcribing_phase(container, make_wav):
+    """O cliente vê 'transcribing' enquanto o áudio está na OpenAI."""
+    job = container.transcription.create_job(
+        data=make_wav(0.5),
+        filename="a.wav",
+        content_type="audio/wav",
+        model=None,
+        language="pt",
+    )
+
+    context = container.transcription.claim(job.id)
+
+    assert context is not None
+    assert container.transcription.get(job.id).phase == "transcribing"
+
+
+def test_set_phase_is_visible_and_ignored_after_the_end(container, make_wav):
+    job = container.transcription.create_job(
+        data=make_wav(0.5),
+        filename="a.wav",
+        content_type="audio/wav",
+        model=None,
+        language="pt",
+    )
+    container.transcription.claim(job.id)
+
+    container.transcription.set_phase(job.id, "rendering")
+    assert container.transcription.get(job.id).phase == "rendering"
+
+    container.transcription.mark_canceled(job.id)
+    assert container.transcription.get(job.id).phase == ""
+    # Job terminal não muda mais de fase.
+    container.transcription.set_phase(job.id, "rendering")
+    assert container.transcription.get(job.id).phase == ""

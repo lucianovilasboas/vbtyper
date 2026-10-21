@@ -45,6 +45,9 @@ class Job(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    # Sub-fase do processamento ("", "transcribing", "rendering"), para o
+    # cliente mostrar o que está acontecendo de fato.
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     created_at: Mapped[str] = mapped_column(String(19), nullable=False, index=True)
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)
     started_at: Mapped[str | None] = mapped_column(String(19))

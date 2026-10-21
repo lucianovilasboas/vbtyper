@@ -13,6 +13,7 @@ from vb_typer.schemas.transcriptions import TranscriptionRead
 class JobRead(ORMModel):
     id: str
     status: JobStatus
+    phase: str = ""
     created_at: IsoStamp
     updated_at: IsoStamp
     started_at: IsoStamp | None = None
