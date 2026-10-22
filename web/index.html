@@ -83,6 +83,33 @@
         <p class="status" id="status" role="status">Pronto para gravar.</p>
       </div>
 
+      <div class="card upload-card">
+        <div class="card-head">
+          <h2>Enviar arquivo</h2>
+          <span class="muted tiny" id="upload-hint">WAV, MP3, M4A, OGG ou WebM · até 25 MB</span>
+        </div>
+        <div class="dropzone" id="dropzone" role="button" tabindex="0"
+             aria-label="Escolher um arquivo de áudio para transcrever">
+          <input id="audio-file" type="file" hidden
+                 accept=".wav,.mp3,.m4a,.ogg,.webm,audio/wav,audio/x-wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/webm">
+          <span class="dropzone-icon" aria-hidden="true">🎧</span>
+          <span><strong>Escolha um arquivo</strong> ou arraste o áudio aqui.</span>
+        </div>
+        <div class="file-chip" id="file-chip" hidden>
+          <div class="file-info">
+            <strong id="file-name">—</strong>
+            <span class="muted small" id="file-meta"></span>
+          </div>
+          <audio id="file-preview" controls preload="metadata" hidden></audio>
+          <button class="ghost small" id="file-remove" type="button">Remover</button>
+        </div>
+        <div class="actions">
+          <button id="file-transcribe" class="primary" type="button" disabled>Transcrever arquivo</button>
+          <button id="file-cancel" class="ghost" type="button" hidden>Cancelar</button>
+          <span class="status upload-status" id="file-status" role="status"></span>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-head">
           <h2>Transcrição</h2>

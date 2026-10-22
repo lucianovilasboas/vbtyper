@@ -92,7 +92,9 @@ class AppSettings(BaseSettings):
 
     # Áudio e transcrição.
     max_upload_bytes: int = 25 * 1024 * 1024
-    max_audio_seconds: float = 120.0
+    # Teto de sanidade para a duração informada pelo cliente. O limite real é o
+    # tamanho do arquivo; 4 h cobrem com folga o que cabe em 25 MB.
+    max_audio_seconds: float = 4 * 3600.0
     allowed_models: CsvTuple = DEFAULT_ALLOWED_MODELS
     allowed_content_types: CsvTuple = DEFAULT_ALLOWED_CONTENT_TYPES
     default_model: str = "gpt-4o-mini-transcribe"

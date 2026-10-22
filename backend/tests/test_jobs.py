@@ -182,6 +182,24 @@ async def test_duration_from_client_fills_webm_gap(
     assert job["result"]["cost_usd"] > 0
 
 
+async def test_long_file_duration_is_accepted(client, auth, with_api_key, respx_mock, wait_for_job):
+    """Arquivo longo: a duração informada vale para o custo e as estatísticas."""
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "reunião transcrita"})
+    )
+    files = {"file": ("reuniao.mp3", b"ID3reuniao-longa", "audio/mpeg")}
+
+    response = await client.post(ENDPOINT, headers=auth, files=files, data={"duration_s": "1800"})
+
+    assert response.status_code == 202
+    created = response.json()
+    assert created["duration_s"] == 1800.0
+
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+    assert job["result"]["duration_s"] == 1800.0
+    assert job["result"]["cost_usd"] > 0
+
+
 async def test_wav_header_wins_over_client_hint(
     client, auth, make_wav, with_api_key, respx_mock, wait_for_job
 ):

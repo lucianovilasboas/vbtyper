@@ -203,6 +203,18 @@ tabela de 6 colunas vira lista de cartões (rótulos curtos, texto em até 3 lin
 sem rolagem lateral). A Atividade ganhou o cartão **Por hora do dia** — 24 baldes,
 inclusive vazios, com o pico — e passou a abrir em **7 dias** por padrão.
 
+### Enviar arquivo pela aba Ditar: **feito**
+
+A aba Ditar ganhou o card **Enviar arquivo**: escolher ou arrastar um áudio
+(WAV, MP3, M4A, OGG ou WebM, até 25 MB), conferir nome, tamanho e duração, e
+confirmar antes de gastar a chamada. O arquivo entra no **mesmo** pipeline do
+microfone — job, perfis, histórico, CSV e estatísticas —, e o texto cai no mesmo
+campo para revisar e copiar. A duração vem dos metadados do próprio arquivo (o
+backend só lê WAV), então arquivos longos passam a contar no custo e nas
+estatísticas: o teto de sanidade da duração informada subiu de 2 min para 4 h e
+o timeout do acompanhamento escala com a duração. O limite real continua sendo
+o tamanho do arquivo (25 MB).
+
 ### O que falta desta seção
 
 Duas análises que estavam no ROADMAP do 1.x e ainda não existem:

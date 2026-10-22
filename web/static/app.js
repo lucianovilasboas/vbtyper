@@ -14,6 +14,19 @@ const VIEW_KEY = "vb-typer-view";
 const VIEWS = new Set(["dictate", "activity", "history", "settings"]);
 const REFRESH_INTERVAL_MS = 10_000;
 const HEATMAP_DAYS = 91;
+const UPLOAD_TYPES = new Set([
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "audio/m4a",
+  "audio/ogg",
+  "audio/webm",
+]);
+const UPLOAD_EXTENSIONS = [".wav", ".mp3", ".m4a", ".ogg", ".webm"];
+const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const WEEKDAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_LONG = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
@@ -32,6 +45,9 @@ const state = {
   recordingStartedAt: 0,
   timerId: null,
   jobId: null,
+  uploadBusy: false,
+  upload: { file: null, duration: 0, previewUrl: "" },
+  maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
   transcriptId: null,
   resultShownAt: 0,
   historyOffset: 0,
@@ -233,14 +249,14 @@ async function submit(blob, duration) {
     state.jobId = job.id;
     // Com o job em curso, o mesmo botão do microfone cancela.
     setProcessingButton();
-    $("record").disabled = false;
+    syncUploadControls();
     handleJobResult(await pollJob(job.id));
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
     state.jobId = null;
     setRecordButton(false);
-    $("record").disabled = false;
+    syncUploadControls();
   }
 }
 
@@ -267,24 +283,25 @@ function jobPhaseText(job) {
   return "Na fila…";
 }
 
-async function pollJob(jobId) {
-  const deadline = performance.now() + POLL_TIMEOUT_MS;
+async function pollJob(jobId, { timeoutMs = POLL_TIMEOUT_MS, onStatus = setStatus } = {}) {
+  const deadline = performance.now() + timeoutMs;
   for (;;) {
     const job = await api.getJob(jobId);
     if (TERMINAL.has(job.status)) return job;
-    setStatus(jobPhaseText(job), "busy");
+    onStatus(jobPhaseText(job), "busy");
     if (performance.now() > deadline) throw new Error("Tempo limite excedido ao transcrever.");
     await sleep(POLL_INTERVAL_MS);
   }
 }
 
-function handleJobResult(job) {
+/** Aplica o resultado do job na tela; ``onStatus`` separa os dois fluxos. */
+function handleJobResult(job, onStatus = setStatus) {
   if (job.status === "canceled") {
-    setStatus("Transcrição cancelada.");
+    onStatus("Transcrição cancelada.");
     return;
   }
   if (job.status === "failed") {
-    setStatus(job.error || "Não foi possível transcrever.", "error");
+    onStatus(job.error || "Não foi possível transcrever.", "error");
     return;
   }
   const result = job.result;
@@ -295,9 +312,9 @@ function handleJobResult(job) {
   state.resultShownAt = performance.now();
   updateWordCount();
   $("copy").disabled = !text.trim();
-  setStatus("Transcrição pronta. Revise e copie onde quiser.", "ok");
+  onStatus("Transcrição pronta. Revise e copie onde quiser.", "ok");
   if (result?.cost_usd) {
-    setStatus(
+    onStatus(
       `Transcrição pronta · ${humanSeconds(result.duration_s)} · ${formatCost(result.cost_usd)}`,
       "ok"
     );
@@ -306,13 +323,191 @@ function handleJobResult(job) {
   state.loaded.delete("activity");
 }
 
-async function cancelJob() {
+async function cancelJob(onStatus = setStatus) {
   if (!state.jobId) return;
-  setStatus("Cancelando…", "busy");
+  onStatus("Cancelando…", "busy");
   try {
     await api.cancelJob(state.jobId);
   } catch (error) {
-    setStatus(error.message, "error");
+    onStatus(error.message, "error");
+  }
+}
+
+// --- envio de arquivo -------------------------------------------------------
+
+let uploadSeq = 0;
+
+function setFileStatus(message, kind = "") {
+  const node = $("file-status");
+  node.textContent = message;
+  node.dataset.state = kind;
+}
+
+function humanBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${value} B`;
+  const kb = value / 1024;
+  if (kb < 1024) return `${kb.toFixed(1).replace(".", ",")} KB`;
+  const mb = kb / 1024;
+  return `${Number.isInteger(mb) ? mb : mb.toFixed(1).replace(".", ",")} MB`;
+}
+
+function isSupportedAudio(file) {
+  const type = (file.type || "").split(";", 1)[0].trim().toLowerCase();
+  if (UPLOAD_TYPES.has(type)) return true;
+  const name = (file.name || "").toLowerCase();
+  return UPLOAD_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
+/** Duração pelos metadados do próprio arquivo; 0 quando o navegador não sabe. */
+function readAudioDuration(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      audio.removeAttribute("src");
+      audio.load();
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    const timer = window.setTimeout(() => finish(0), 4000);
+    audio.preload = "metadata";
+    audio.addEventListener("loadedmetadata", () => {
+      const value = audio.duration;
+      finish(Number.isFinite(value) && value > 0 ? value : 0);
+    });
+    audio.addEventListener("error", () => finish(0));
+    audio.src = url;
+  });
+}
+
+/** Mantém microfone e envio coerentes: um fluxo por vez, um job por vez. */
+function syncUploadControls() {
+  const busy = state.uploadBusy || Boolean(state.jobId);
+  const hasFile = Boolean(state.upload.file);
+  $("dropzone").classList.toggle("busy", busy);
+  $("dropzone").setAttribute("aria-disabled", String(busy));
+  $("audio-file").disabled = busy;
+  $("file-remove").disabled = busy;
+  $("file-transcribe").disabled = busy || !hasFile;
+  // No job do microfone o botão segue ativo: é ele que cancela.
+  $("record").disabled = state.uploadBusy ? true : !Recorder.supported;
+  $("file-cancel").hidden = !(state.uploadBusy && state.jobId);
+}
+
+function clearUpload({ keepStatus = false } = {}) {
+  const preview = $("file-preview");
+  preview.pause();
+  preview.removeAttribute("src");
+  preview.load();
+  preview.hidden = true;
+  if (state.upload.previewUrl) URL.revokeObjectURL(state.upload.previewUrl);
+  state.upload = { file: null, duration: 0, previewUrl: "" };
+  $("file-chip").hidden = true;
+  $("file-name").textContent = "—";
+  $("file-meta").textContent = "";
+  $("audio-file").value = "";
+  if (!keepStatus) setFileStatus("");
+  syncUploadControls();
+}
+
+async function pickFile(file) {
+  if (!file) return;
+  if (state.uploadBusy || state.jobId) {
+    setFileStatus("Espere a transcrição atual terminar.", "error");
+    return;
+  }
+  if (recorder.recording) {
+    setFileStatus("Pare a gravação antes de enviar um arquivo.", "error");
+    return;
+  }
+  if (!isSupportedAudio(file)) {
+    setFileStatus("Formato não suportado. Use WAV, MP3, M4A, OGG ou WebM.", "error");
+    return;
+  }
+  if (!file.size) {
+    setFileStatus("O arquivo está vazio.", "error");
+    return;
+  }
+  if (file.size > state.maxUploadBytes) {
+    setFileStatus(`O arquivo excede o limite de ${humanBytes(state.maxUploadBytes)}.`, "error");
+    return;
+  }
+
+  const seq = ++uploadSeq;
+  if (state.upload.previewUrl) URL.revokeObjectURL(state.upload.previewUrl);
+  const previewUrl = URL.createObjectURL(file);
+  state.upload = { file, duration: 0, previewUrl };
+
+  $("file-chip").hidden = false;
+  $("file-name").textContent = file.name || "áudio";
+  $("file-meta").textContent = `${humanBytes(file.size)} · lendo a duração…`;
+  $("file-transcribe").disabled = true;
+  const preview = $("file-preview");
+  preview.src = previewUrl;
+  preview.hidden = false;
+  setFileStatus("Lendo os dados do áudio…", "busy");
+
+  const duration = await readAudioDuration(file);
+  if (seq !== uploadSeq) return; // outro arquivo foi escolhido no meio
+  state.upload.duration = duration;
+  $("file-meta").textContent = duration
+    ? `${humanBytes(file.size)} · ${humanSeconds(duration)}`
+    : `${humanBytes(file.size)} · duração desconhecida`;
+  // Permite escolher o mesmo arquivo outra vez depois de removê-lo.
+  $("audio-file").value = "";
+  setFileStatus("Arquivo pronto para transcrever.", "ok");
+  syncUploadControls();
+}
+
+async function startFileJob() {
+  const file = state.upload.file;
+  if (!file || state.uploadBusy || state.jobId) return;
+  if (recorder.recording) {
+    setFileStatus("Pare a gravação antes de enviar um arquivo.", "error");
+    return;
+  }
+
+  state.transcriptId = null;
+  $("transcript").value = "";
+  updateWordCount();
+  $("copy").disabled = true;
+
+  state.uploadBusy = true;
+  syncUploadControls();
+  setFileStatus("Enviando áudio para transcrição…", "busy");
+
+  try {
+    const job = await api.createJob(file, {
+      model: state.settings.model,
+      language: state.settings.language,
+      profile: state.settings.default_profile,
+      duration: state.upload.duration,
+    });
+    state.jobId = job.id;
+    syncUploadControls();
+    setFileStatus("Na fila…", "busy");
+    // Arquivo longo demora: base de 10 min mais 1 min por minuto de áudio.
+    const timeoutMs = Math.max(
+      POLL_TIMEOUT_MS,
+      600_000 + (state.upload.duration || 0) * 1000
+    );
+    const result = await pollJob(job.id, { timeoutMs, onStatus: setFileStatus });
+    handleJobResult(result, setFileStatus);
+    if (result.status === "succeeded") {
+      // O áudio já está no arquivo do backend; não deixa reenviar sem querer.
+      clearUpload({ keepStatus: true });
+    }
+  } catch (error) {
+    setFileStatus(error.message, "error");
+  } finally {
+    state.jobId = null;
+    state.uploadBusy = false;
+    syncUploadControls();
   }
 }
 
@@ -1290,6 +1485,43 @@ function bindEvents() {
     }
   });
   $("copy").addEventListener("click", copyTranscript);
+
+  const dropzone = $("dropzone");
+  const pickerOpen = () => !state.uploadBusy && !state.jobId;
+  dropzone.addEventListener("click", () => {
+    if (pickerOpen()) $("audio-file").click();
+  });
+  dropzone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    if (pickerOpen()) $("audio-file").click();
+  });
+  for (const type of ["dragenter", "dragover"]) {
+    dropzone.addEventListener(type, (event) => {
+      event.preventDefault();
+      if (pickerOpen()) dropzone.classList.add("dragging");
+    });
+  }
+  dropzone.addEventListener("dragleave", (event) => {
+    if (!dropzone.contains(event.relatedTarget)) dropzone.classList.remove("dragging");
+  });
+  dropzone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    dropzone.classList.remove("dragging");
+    const files = [...(event.dataTransfer?.files || [])];
+    if (!files.length) return;
+    if (files.length > 1) setFileStatus("Um arquivo por vez: usando o primeiro.");
+    pickFile(files[0]).catch((error) => setFileStatus(error.message, "error"));
+  });
+  $("audio-file").addEventListener("change", () => {
+    const file = $("audio-file").files?.[0];
+    if (file) pickFile(file).catch((error) => setFileStatus(error.message, "error"));
+  });
+  $("file-remove").addEventListener("click", clearUpload);
+  $("file-transcribe").addEventListener("click", () => {
+    startFileJob().catch((error) => setFileStatus(error.message, "error"));
+  });
+  $("file-cancel").addEventListener("click", () => cancelJob(setFileStatus));
   $("clear").addEventListener("click", () => {
     $("transcript").value = "";
     state.transcriptId = null;
@@ -1410,10 +1642,11 @@ async function init() {
   if (!Recorder.supported) {
     $("record").disabled = true;
     setStatus(
-      "Este navegador não oferece gravação de áudio. Use uma versão recente do Firefox ou Chrome.",
+      "Este navegador não grava áudio pelo microfone. Você ainda pode enviar um arquivo abaixo.",
       "error"
     );
   }
+  syncUploadControls();
 
   try {
     const ready = await api.ready();
@@ -1425,6 +1658,16 @@ async function init() {
   } catch {
     setConnection("error", "Backend indisponível");
     setStatus("Não consegui falar com o backend.", "error");
+  }
+
+  try {
+    const info = await api.info();
+    const limit = Number(info.max_upload_bytes);
+    if (Number.isFinite(limit) && limit > 0) state.maxUploadBytes = limit;
+    $("upload-hint").textContent =
+      `WAV, MP3, M4A, OGG ou WebM · até ${humanBytes(state.maxUploadBytes)}`;
+  } catch {
+    /* o limite padrão do cliente continua valendo */
   }
 
   try {

@@ -7,8 +7,9 @@ próprio backend na mesma origem. Abra <http://127.0.0.1:8765>.
 
 Quatro telas, na mesma página:
 
-- **Ditar** — grava pelo microfone do navegador e mostra o texto para revisar e
-  copiar. Os chips do topo mostram com qual modelo e idioma você está ditando.
+- **Ditar** — grava pelo microfone do navegador **ou envia um arquivo de áudio**
+  (WAV, MP3, M4A, OGG e WebM, até 25 MB) e mostra o texto para revisar e copiar.
+  Os chips do topo mostram com qual modelo, idioma e perfil você está ditando.
 - **Atividade** — métricas do período, dois gráficos (volume e ritmo de fala),
   mapa de consistência das últimas 13 semanas e uso por dia da semana.
 - **Histórico** — tabela com quando, áudio, palavras, **custo estimado** e o
@@ -23,7 +24,8 @@ Arquivos:
   same-origin`).
 - `static/recorder.js` — envoltório do `MediaRecorder` (WebM/Opus no Chrome,
   Ogg/Opus no Firefox) que devolve um `Blob`.
-- `static/app.js` — fluxo de gravação, histórico, atividade e configurações.
+- `static/app.js` — fluxo de gravação e envio de arquivo, histórico, atividade e
+  configurações.
 - `static/charts.js` — gráficos em SVG puro (sem biblioteca): barras, linha,
   mapa de consistência e uso por dia da semana.
 - `static/style.css` — a paleta do 1.x (o roxo `#7839e8`) e os componentes. O
@@ -52,6 +54,11 @@ a resposta nem enviar o cookie (e o backend ainda valida `Host` e `Origin`).
    terminal; **Cancelar** chama `DELETE`.
 4. O texto aparece no campo; **Copiar** usa a área de transferência e registra a
    inserção em `PATCH /api/v1/transcriptions/{id}`.
+
+O card **Enviar arquivo** entra no mesmo pipeline: escolhe (ou arrasta) o áudio,
+mostra nome, tamanho e a duração lida dos metadados do próprio arquivo, e só
+envia depois do clique em **Transcrever arquivo**. O resultado cai no mesmo
+campo e no histórico, com a duração que o navegador conseguiu ler.
 
 O backend não digita nada — inserir texto em outros aplicativos é papel dos
 clientes desktop.

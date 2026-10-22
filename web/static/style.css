@@ -374,6 +374,48 @@ select.key { padding: 3px 6px; color: var(--ink); }
 .status[data-state="ok"] { color: var(--green); }
 .status[data-state="busy"] { color: var(--accent); }
 
+/* Envio de arquivo: convive com o microfone, mas tem o seu próprio status. */
+.upload-card .card-head { align-items: baseline; }
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.dropzone strong { color: var(--ink); }
+.dropzone:hover,
+.dropzone:focus-visible { border-color: var(--accent); color: var(--ink); }
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.dropzone.busy { cursor: default; opacity: 0.6; }
+.dropzone-icon { font-size: 1.2rem; }
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.file-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.file-info strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip audio { max-width: 260px; }
+.file-chip button { flex-shrink: 0; }
+.upload-status { text-align: left; flex: 1 1 200px; }
+
 textarea { width: 100%; min-height: 168px; resize: vertical; border: 1px solid var(--line); background: var(--panel-2); border-radius: 12px; padding: 12px 14px; line-height: 1.55; }
 textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); }
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
@@ -406,6 +448,10 @@ textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transp
   .section-head { flex-wrap: wrap; gap: 10px; }
   .period,
   .filters { flex-wrap: wrap; }
+
+  /* O player do arquivo não cabe ao lado do nome e do botão. */
+  .file-chip { flex-wrap: wrap; }
+  .file-chip audio { max-width: 100%; width: 100%; }
 
   /* Histórico: a tabela de 6 colunas vira lista de cartões, para o conteúdo
      numérico não estourar a largura do celular. */

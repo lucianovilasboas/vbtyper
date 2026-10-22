@@ -116,10 +116,10 @@ Detalhes de parâmetros, erros e exemplos: [`docs/api.md`](docs/api.md).
 ## Interface web
 
 O backend serve a interface web em <http://127.0.0.1:8765> — mesma origem, sem
-etapa de build (módulos ES puros). Telas: **Ditar** (gravação pelo navegador,
-modelo/idioma, transcrição e cópia), **Histórico** (busca, cópia, exclusão,
-CSV) e **Atividade** (períodos de 7/30/90 dias, 6 meses e 1 ano; métricas e
-gráfico).
+etapa de build (módulos ES puros). Telas: **Ditar** (gravação pelo navegador ou
+envio de arquivo, modelo/idioma, transcrição e cópia), **Histórico** (busca,
+cópia, exclusão, CSV) e **Atividade** (períodos de 7/30/90 dias, 6 meses e 1 ano;
+métricas e gráfico).
 
 Autenticação do navegador: a página é servida com o token num cookie
 **HttpOnly + SameSite=Strict**. O JavaScript nunca vê o token; o backend ainda
