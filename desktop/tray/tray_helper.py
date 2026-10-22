@@ -88,29 +88,33 @@ class Tray:
         self.menu.append(self.toggle_item)
 
         # --- acrescentado no 2.0: perfis de texto na bandeja ---
-        # Itens simples, com o perfil vigente marcado no próprio rótulo. Itens de
-        # rádio foram descartados: o host do AppIndicator constrói o menu no
-        # primeiro uso e ativava um item sozinho, trocando a escolha sem clique.
+        # Um único item "Perfis" abre o submenu, para o menu principal não crescer
+        # com dez perfis. Itens simples, com o vigente marcado no próprio rótulo.
+        # Itens de rádio foram descartados: o host do AppIndicator constrói o menu
+        # no primeiro uso e ativava um item sozinho, trocando a escolha sem clique.
         self.menu.append(self.Gtk.SeparatorMenuItem())
-        # Os perfis entram entre este separador e o de baixo: a lista muda quando
-        # alguém cria ou apaga um perfil na interface.
-        self.profile_base = len(self.menu.get_children())
-        self.profile_end = self.Gtk.SeparatorMenuItem()
-        self.menu.append(self.profile_end)
+        self.profile_menu = self.Gtk.Menu()
+        self.profile_item = self.Gtk.MenuItem(label="Perfis")
+        self.profile_item.set_submenu(self.profile_menu)
+        self.profile_item.show()
+        self.menu.append(self.profile_item)
         self.profile_items = {}
         self.shown_profiles = ()
         self.shown_profile = ""
         # -----------------------------------------------------
 
+        self.menu.append(self.Gtk.SeparatorMenuItem())
         quit_item = self.Gtk.MenuItem(label="Sair")
         quit_item.connect("activate", lambda *_: self.send("quit"))
         quit_item.show()
         self.menu.append(quit_item)
+
+        # O primeiro estado já preenche o submenu; o host relê a árvore ao receber
+        # o menu pronto, então a lista não depende do primeiro uso.
+        self.refresh()
         self.indicator.set_menu(self.menu)
         self.indicator.set_secondary_activate_target(self.open_item)
-
         self.GLib.timeout_add(POLL_MS, self.refresh)
-        self.refresh()
 
     def icon_path(self, name: str) -> str:
         candidate = self.assets / f"{name}.png"
@@ -172,15 +176,20 @@ class Tray:
         if signature != self.shown_profiles:
             self.shown_profiles = signature
             for item in self.profile_items.values():
-                self.menu.remove(item)
+                self.profile_menu.remove(item)
             self.profile_items.clear()
-            for offset, (slug, name) in enumerate(signature):
+            for slug, name in signature:
                 item = self.Gtk.MenuItem(label=name)
                 item.connect("activate", lambda *_, s=slug: self.send("profile", s))
                 item.show()
-                self.menu.insert(item, self.profile_base + offset)
+                self.profile_menu.append(item)
                 self.profile_items[slug] = item
             self.shown_profile = ""  # a lista mudou: remarca o vigente
+            # Sem perfis (API fora do ar) o item some, em vez de abrir vazio.
+            if signature:
+                self.profile_item.show()
+            else:
+                self.profile_item.hide()
         self._sync_profile(current)
 
     def _sync_profile(self, current: str) -> None:

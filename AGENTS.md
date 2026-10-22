@@ -110,11 +110,12 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     do sistema (`/usr/bin/python3`) — o PyGObject não empacota no PyInstaller.
     Eles só leem o estado pelo socket de controle; nenhuma lógica do ditado mora
     ali. `tray/tray_helper.py` veio do 1.x e mantém a estrutura original; as
-    adições do 2.0 estão marcadas no arquivo (os **perfis de texto** no menu),
+    adições do 2.0 estão marcadas no arquivo (o item **Perfis** e o submenu dele),
     com o resto intocado. **Não use `RadioMenuItem`/`CheckMenuItem` nesse menu:**
     o host do AppIndicator constrói o menu no primeiro uso e ativava um item
     sozinho, trocando a escolha sem clique. Os itens de perfil são simples, com o
-    vigente marcado no próprio rótulo, e a lista é reconstruída quando muda.
+    vigente marcado no próprio rótulo, e o submenu é reconstruído quando a lista
+    muda (o item some quando não há perfis).
 16. O perfil de texto é `literal` ("Transcrição fiel") por **padrão**; os demais
     perfis passam pela segunda chamada (modo smart). A escolha mora em
     `app_settings.default_profile` — o cliente desktop envia **`profile`** no job

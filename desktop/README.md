@@ -18,8 +18,8 @@ uv run vb-typer-desktop --write-preferences   # cria o arquivo de preferências
 
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
 inserir. A bandeja mostra o estado (desativado, ativo, gravando, transcrevendo) e oferece
-*Abrir configurações*, *Iniciar/Parar ditado*, a **lista de perfis de texto**
-(o vigente com `✓`) e *Sair*.
+*Abrir configurações*, *Iniciar/Parar ditado*, o item **Perfis** — que abre o
+submenu com os perfis de texto (o vigente com `✓`) — e *Sair*.
 
 O perfil escolhido pela bandeja é gravado no backend (`default_profile`), o mesmo
 lugar onde a interface o edita — e a bandeja relê a configuração de tempos em

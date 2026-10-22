@@ -34,6 +34,9 @@ mkdir -p \
   "$PYINSTALLER_DIR/work" \
   "$PYINSTALLER_DIR/spec"
 
+# `tray/` entra no pacote como dado; caches de teste não podem ir junto.
+find "$DESKTOP/tray" -name "__pycache__" -type d -prune -exec rm -rf {} +
+
 printf 'Empacotando o cliente Python %s...\n' "$VERSION"
 uv run --project "$DESKTOP" --extra build pyinstaller \
   --noconfirm \
