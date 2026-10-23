@@ -192,11 +192,11 @@ tarifa do modelo em `domain/pricing.py` — uma fonte só, sem tabela duplicada 
 JavaScript.
 
 **Onda do microfone na aba Ditar** (`v0.7.0`): o efeito do demo `wave.js` passou
-a ser o medidor — gradiente de nove paradas, envelope na onda em repouso, traço
-reativo ao nível real do microfone, brilho de 20% e a linha central. Sem botões
-próprios: quem abre e fecha o microfone é o gravador. Um único loop de animação,
-pausado quando a aba Ditar não está visível, e canvas dimensionado por
-`devicePixelRatio`.
+a ser o medidor — gradiente de nove paradas, **linha reta em repouso** (sem a
+ondulação do demo), traço reativo ao nível real do microfone, brilho de 20% e a
+linha central. Sem botões próprios: quem abre e fecha o microfone é o gravador.
+O loop de animação só roda durante a gravação, é pausado quando a aba Ditar não
+está visível, e o canvas é dimensionado por `devicePixelRatio`.
 
 **Histórico no celular e horas na Atividade** (`v0.11.0`): abaixo de 720 px a
 tabela de 6 colunas vira lista de cartões (rótulos curtos, texto em até 3 linhas,

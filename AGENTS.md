@@ -209,7 +209,7 @@ de propor trabalho novo.
   `--notices balloons`.
 - A fase de gravação do indicador é a **mesma onda da tela Ditar**: linha
   colorida com o gradiente do canvas web, desenhada a partir das amostras reais
-  do microfone; sem amostras ainda, o envelope senoidal de repouso da web. A fase
+  do microfone; sem amostras ainda, um envelope senoidal de repouso. A fase
   de transcrição é uma barra que desliza — o movimento é o que distingue as duas.
   `"shape": "bar"` no `desktop.json` troca por uma barra de nível ancorada à
   esquerda.

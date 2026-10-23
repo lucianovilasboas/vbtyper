@@ -1,9 +1,9 @@
 // Onda do microfone na tela Ditar.
 //
-// Desenho idêntico ao demo original (mesmas cores, espessuras, envelope e
-// escala). Sem botões: quem abre e fecha o microfone é o gravador. O que muda
-// em relação ao demo é só o ciclo de vida — um único loop de animação, pausado
-// quando a aba Ditar não está visível.
+// Em repouso, uma linha reta com o gradiente do demo (sem ondulação); gravando,
+// o traço reage ao nível real do microfone. Sem botões: quem abre e fecha o
+// microfone é o gravador. O loop de animação só roda durante a gravação e é
+// pausado quando a aba Ditar não está visível.
 
 const GRADIENT_STOPS = [
   [0.0, "#9b002f"],
@@ -25,34 +25,18 @@ function createWaveGradient(ctx, width) {
   return gradient;
 }
 
-function drawIdleWave({ ctx, width, height, time = 0 }) {
-  ctx.clearRect(0, 0, width, height);
-
+function drawIdleLine({ ctx, width, height }) {
   const centerY = height / 2;
-  // O demo foi desenhado para 120 px de altura. A amplitude acompanha o canvas
-  // para a onda não ser cortada quando ele é menor, mantendo a proporção.
-  const amplitude = (18 * height) / 120;
-  const frequency = 0.02;
   const gradient = createWaveGradient(ctx, width);
 
+  ctx.clearRect(0, 0, width, height);
   ctx.beginPath();
   ctx.lineWidth = 5;
   ctx.strokeStyle = gradient;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-
-  for (let x = 0; x <= width; x++) {
-    const distanceFromCenter = Math.abs(x - width / 2);
-    const envelope = Math.exp(-distanceFromCenter / 180);
-    const y = centerY + Math.sin(x * frequency + time * 0.06) * amplitude * envelope * 3;
-
-    if (x === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
-
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(width, centerY);
   ctx.stroke();
 }
 
@@ -123,7 +107,6 @@ export function createWave(canvas) {
 
   let width = 0;
   let height = 0;
-  let time = 0;
   let mode = "idle";
   let tabActive = true;
   let frameId = 0;
@@ -143,20 +126,18 @@ export function createWave(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     width = rect.width;
     height = rect.height;
+    // Redimensionar zera o bitmap: parado, a linha reta precisa ser redesenhada
+    // aqui; gravando, o próximo quadro cuida disso.
+    if (mode === "idle") drawIdleLine({ ctx, width, height });
   }
 
   function frame() {
     frameId = 0;
     if (!tabActive || document.hidden) return;
+    if (mode !== "live" || !analyser || !dataArray) return;
 
-    if (mode === "live" && analyser && dataArray) {
-      analyser.getByteTimeDomainData(dataArray);
-      drawReactiveWave({ ctx, width, height, dataArray });
-    } else {
-      drawIdleWave({ ctx, width, height, time });
-      time += 1;
-    }
-
+    analyser.getByteTimeDomainData(dataArray);
+    drawReactiveWave({ ctx, width, height, dataArray });
     frameId = window.requestAnimationFrame(frame);
   }
 
@@ -166,7 +147,12 @@ export function createWave(canvas) {
       frameId = 0;
       return;
     }
-    if (!frameId) frameId = window.requestAnimationFrame(frame);
+    if (mode === "live") {
+      if (!frameId) frameId = window.requestAnimationFrame(frame);
+    } else {
+      // Parado não há animação: a linha reta é desenhada uma vez só.
+      drawIdleLine({ ctx, width, height });
+    }
   }
 
   function releaseAudio() {
