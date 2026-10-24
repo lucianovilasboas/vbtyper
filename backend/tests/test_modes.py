@@ -290,3 +290,47 @@ async def test_nothing_new_ends_the_job_without_text(
     assert job["result"]["continuity_count"] == 1
     # O texto cru continua guardado, para auditar o que foi dito.
     assert job["result"]["raw_text"] == FALADO
+
+
+async def test_empty_answer_with_continuity_is_nothing_new(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """O modelo pode devolver vazio em vez do marcador: também é "nada a acrescentar"."""
+    slug = await _profile(client, auth, name="Fluxo", continuous=True)
+    container.history.record(
+        text="O prazo do relatório é sexta-feira.",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    respx_mock.post(AUDIO).mock(return_value=httpx.Response(200, json={"text": FALADO}))
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "   "}}]})
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = slug
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    assert job["result"]["text"] == ""
+    assert job["result"]["continuity_count"] == 1
+
+
+async def test_empty_answer_without_continuity_falls_back_to_the_literal(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Sem contexto, resposta vazia continua sendo falha do ajuste: entrega o literal."""
+    slug = await _profile(client, auth, name="Sem memória", continuous=False)
+    respx_mock.post(AUDIO).mock(return_value=httpx.Response(200, json={"text": FALADO}))
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": ""}}]})
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = slug
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    assert job["result"]["text"] == FALADO
+    assert job["result"]["mode"] == "literal"

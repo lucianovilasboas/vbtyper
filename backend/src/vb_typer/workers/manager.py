@@ -121,14 +121,16 @@ class JobManager:
                 instructions=compose_instructions(profile, continuity=bool(context_text)),
                 api_key=api_key,
                 context=context_text or None,
+                allow_empty=bool(context_text),
             )
         except DomainError as exc:
             logger.warning("Perfil %s falhou (job %s): %s", profile.slug, context.id, exc)
             return AppliedProfile(text, TranscriptionMode.LITERAL, None, LITERAL_SLUG)
         count = gathered.count if gathered is not None else 0
-        # O modelo pode concluir que o ditado só repetia o que já estava escrito:
-        # o job conclui sem texto (nada é inserido) em vez de devolver o literal.
-        final_text = "" if is_nothing_new(adjusted) else (adjusted or text)
+        # O modelo pode concluir que o ditado só repetia o que já estava escrito
+        # (marcador ou resposta vazia): o job conclui sem texto, nada é inserido.
+        empty = not adjusted.strip() or is_nothing_new(adjusted)
+        final_text = "" if empty else (adjusted or text)
         return AppliedProfile(final_text, TranscriptionMode.SMART, usage, profile.slug, count)
 
     async def cancel(self, job_id: str) -> None:

@@ -92,6 +92,7 @@ class OpenAIAdapter:
         instructions: str,
         api_key: str,
         context: str | None = None,
+        allow_empty: bool = False,
     ) -> tuple[str, dict]:
         """Aplica um perfil a um texto já transcrito; devolve ``(texto, usage)``.
 
@@ -122,10 +123,17 @@ class OpenAIAdapter:
             raise ProviderError("A resposta do ajuste não contém texto.")
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
         adjusted = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(adjusted, str) or not adjusted.strip():
-            raise ProviderError("O ajuste do texto voltou vazio.")
         usage = payload.get("usage") if isinstance(payload, dict) else None
-        return adjusted.strip(), usage if isinstance(usage, dict) else {}
+        usage = usage if isinstance(usage, dict) else {}
+        if not isinstance(adjusted, str):
+            raise ProviderError("A resposta do ajuste não contém texto.")
+        if not adjusted.strip():
+            # Com contexto de continuidade, vazio é resposta legítima: o ditado só
+            # repetia o que já estava escrito ("nada a acrescentar").
+            if allow_empty:
+                return "", usage
+            raise ProviderError("O ajuste do texto voltou vazio.")
+        return adjusted.strip(), usage
 
     async def check(self, api_key: str) -> int:
         """GET somente leitura em ``/models``; devolve a quantidade de modelos."""
