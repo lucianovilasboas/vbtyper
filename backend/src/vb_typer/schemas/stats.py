@@ -61,6 +61,8 @@ class StatsResponse(BaseModel):
 
     date_from: str = Field(alias="from")
     date_to: str = Field(alias="to")
+    # "Agora" no fuso do servidor: a UI usa isto para destacar hora/dia atuais.
+    now: str
     granularity: Granularity
     summary: StatsSummary
     series: list[StatsPoint]

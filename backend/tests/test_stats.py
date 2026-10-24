@@ -160,3 +160,14 @@ async def test_hours_of_day_has_24_buckets(client, auth, container):
     assert hours[base.hour]["seconds"] == 15.0
     assert hours[other.hour]["count"] == 1
     assert hours[other.hour]["words"] == 3
+
+
+async def test_stats_exposes_the_server_now(client, auth):
+    """A UI destaca a hora/dia atuais com o relógio do servidor, não o do navegador."""
+    response = await client.get("/api/v1/stats", headers=auth)
+
+    assert response.status_code == 200
+    now = response.json()["now"]
+    assert len(now) == 19
+    assert now[10] == "T"
+    assert now.startswith(datetime.now().strftime("%Y-%m-%d"))
