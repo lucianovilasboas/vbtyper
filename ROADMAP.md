@@ -3,8 +3,8 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 24/10/2026 — tudo em `v0.15.0` (backend: 131 testes; desktop:
-169 testes).
+Última atualização: 24/10/2026 — tudo em `v0.16.0` (backend: 137 testes; desktop:
+239 testes).
 
 ---
 
@@ -71,6 +71,14 @@ consistência e o ponto do dia/mês no volume e no ritmo de fala. A legenda most
 "agora: sábado, 24/10 · 11h". O `/stats` passou a devolver `now` (horário local do
 servidor) para o destaque não depender do relógio do navegador, e a virada de hora
 recarrega a tela pelo poll que já existia.
+
+**Atalhos de perfil (`v0.16.0`).** O cliente desktop troca de perfil pelo teclado:
+`Ctrl+Alt+Tab` avança, `Ctrl+Alt+Shift+Tab` volta e `Ctrl+Alt+0` retorna ao padrão. A
+troca é temporária (não mexe no `default_profile`) e o indicador mostra o nome do perfil.
+As combinações ficam em `app_settings.hotkeys`, editáveis na nova seção
+**Configurações › Atalhos**, com captura pelo teclado e validação no backend (recusa
+Ctrl+Super, que é o atalho de gravar). No X11 o grab (`XGrabKey`) impede que a combinação
+chegue ao aplicativo em foco.
 
 ### Modelo do texto e itens de perfil: **feito em `v0.13.0`**
 

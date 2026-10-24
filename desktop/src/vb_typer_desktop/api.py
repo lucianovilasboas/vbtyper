@@ -170,16 +170,23 @@ class ApiClient:
         """Altera configurações no backend (a bandeja usa para trocar o perfil)."""
         return self._request("PATCH", "/api/v1/settings", json=changes).json()
 
+    def settings_or_empty(self) -> dict:
+        """Configurações do backend; vazio quando ele não responde.
+
+        Uma falha nunca impede o ditado: o daemon mantém o que já estava em uso.
+        """
+        try:
+            return self.settings()
+        except ApiError:
+            return {}
+
     def current_options(self) -> tuple[str, str, str, str]:
         """Modelo, idioma, modo e perfil padrão escolhidos na interface.
 
         A falha nunca impede o ditado: sem resposta, o backend decide pelos
         padrões dele (literal entre eles).
         """
-        try:
-            payload = self.settings()
-        except ApiError:
-            return "", "", "", ""
+        payload = self.settings_or_empty()
         return (
             str(payload.get("model") or ""),
             str(payload.get("language") or ""),

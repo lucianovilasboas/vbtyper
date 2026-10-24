@@ -22,6 +22,62 @@ SUPER_KEYSYMS = (
 )
 MAX_PARENT_DEPTH = 64
 
+# Máscaras de modificador do X para os nomes que o backend usa.
+COMBO_MASKS = {
+    "ctrl": 0x0004,  # ControlMask
+    "alt": 0x0008,  # Mod1Mask
+    "shift": 0x0001,  # ShiftMask
+    "super": 0x0040,  # Mod4Mask
+}
+# Keysyms das teclas especiais; letras, dígitos e F1–F12 saem do próprio nome.
+COMBO_KEYSYMS = {
+    "Tab": 0xFF09,
+    "Space": 0x0020,
+    "Enter": 0xFF0D,
+    "Backspace": 0xFF08,
+    "Delete": 0xFFFF,
+    "Insert": 0xFF63,
+    "Home": 0xFF50,
+    "End": 0xFF57,
+    "PageUp": 0xFF55,
+    "PageDown": 0xFF56,
+    "ArrowUp": 0xFF52,
+    "ArrowDown": 0xFF54,
+    "ArrowLeft": 0xFF51,
+    "ArrowRight": 0xFF53,
+    "Backquote": 0x0060,
+    "Minus": 0x002D,
+    "Equal": 0x003D,
+    "BracketLeft": 0x005B,
+    "BracketRight": 0x005D,
+    "Backslash": 0x005C,
+    "Semicolon": 0x003B,
+    "Quote": 0x0027,
+    "Comma": 0x002C,
+    "Period": 0x002E,
+    "Slash": 0x002F,
+}
+
+
+def combo_keysym(name: str) -> int:
+    """Keysym de uma tecla da combinação; 0 quando o nome não é conhecido."""
+    special = COMBO_KEYSYMS.get(name)
+    if special is not None:
+        return special
+    if len(name) == 1 and name.isalpha():
+        return ord(name.lower())
+    if len(name) == 1 and name.isdigit():
+        return ord(name)
+    if name.startswith("F") and name[1:].isdigit():
+        number = int(name[1:])
+        if 1 <= number <= 12:
+            return 0xFFBE + number - 1  # XK_F1..XK_F12
+    return 0
+
+
+class ComboUnavailable(RuntimeError):
+    """O X não entregou as combinações (sessão ausente ou combinação ocupada)."""
+
 
 def read_active_window() -> int | None:
     """Captura o foco de entrada X (inclusive janelas filhas), não o app do topo."""
@@ -379,6 +435,130 @@ def type_text(
             connection.close()
 
 
+class ComboWatcher:
+    """Combinações de perfil por grab global (``XGrabKey``), em thread própria.
+
+    Diferente do atalho de gravar — que só **olha** o teclado e por isso deixa a
+    tecla chegar ao aplicativo —, aqui a combinação é tomada do sistema: sem o
+    grab, ``Ctrl+Alt+Tab`` trocaria de aba no navegador além de mudar o perfil.
+    O grab sai ao parar, e o X o libera sozinho se o processo cair.
+
+    A thread usa ``select`` no descritor do X com prazo curto: parar é
+    determinístico, sem depender de evento nenhum chegar.
+    """
+
+    def __init__(
+        self,
+        bindings: dict[str, tuple[tuple[str, ...], str]],
+        on_action: Callable[[str], None],
+        on_error: Callable[[str], None] | None = None,
+        interval: float = 0.1,
+    ) -> None:
+        self.bindings = dict(bindings)
+        self.on_action = on_action
+        self.on_error = on_error
+        self.interval = interval
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        if self.running or not self.bindings:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="vb-typer-combos", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=1)
+        self._thread = None
+
+    def _fail(self, message: str) -> None:
+        if self.on_error is not None:
+            self.on_error(message)
+
+    def _run(self) -> None:
+        from Xlib import X, display
+        from Xlib.error import XError
+
+        try:
+            connection = display.Display()
+        except Exception as exc:  # sem DISPLAY, por exemplo
+            self._fail(f"sessão gráfica indisponível ({exc})")
+            return
+
+        grabs: list[tuple[int, int]] = []
+        actions: dict[tuple[int, int], str] = {}
+        try:
+            root = connection.screen().root
+            for action, (modifiers, key) in self.bindings.items():
+                keycode = connection.keysym_to_keycode(combo_keysym(key))
+                if not keycode:
+                    continue
+                mask = 0
+                for name in modifiers:
+                    mask |= COMBO_MASKS.get(name, 0)
+                if not mask:
+                    continue
+                # Cada combinação também precisa das variantes com CapsLock e
+                # NumLock, senão o atalho morre quando um deles está ligado.
+                for extra in (0, X.LockMask, X.Mod2Mask, X.LockMask | X.Mod2Mask):
+                    root.grab_key(keycode, mask | extra, False, X.GrabModeAsync, X.GrabModeAsync)
+                    grabs.append((keycode, mask | extra))
+                    actions[(keycode, mask | extra)] = action
+            connection.sync()
+            if not grabs:
+                self._fail("nenhuma combinação válida para registrar")
+                return
+            self._loop(connection, actions)
+        except XError as exc:
+            self._fail(f"combinação já em uso por outro programa ({exc})")
+        except Exception as exc:  # pragma: no cover - erro inesperado do X
+            self._fail(str(exc))
+        finally:
+            try:
+                for keycode, mask in grabs:
+                    root.ungrab_key(keycode, mask)
+                connection.sync()
+            except Exception:  # pragma: no cover - conexão já perdida
+                pass
+            connection.close()
+
+    def _loop(self, connection, actions: dict[tuple[int, int], str]) -> None:
+        import select
+
+        from Xlib import X
+
+        pressed: set[tuple[int, int]] = set()
+        descriptor = connection.fileno()
+        while not self._stop.is_set():
+            readable, _, _ = select.select([descriptor], [], [], self.interval)
+            if not readable:
+                continue
+            while connection.pending_events():
+                event = connection.next_event()
+                if event.type not in (X.KeyPress, X.KeyRelease):
+                    continue
+                # CapsLock/NumLock não mudam a combinação.
+                state = event.state & ~(X.LockMask | X.Mod2Mask)
+                key = (event.detail, state)
+                if event.type == X.KeyPress:
+                    if key in pressed:
+                        continue  # auto-repeat: só um passo por aperto
+                    pressed.add(key)
+                    action = actions.get(key)
+                    if action:
+                        self.on_action(action)
+                else:
+                    pressed.discard(key)
+
+
 class LinuxX11Platform:
     """Integrações do X11 (porte do app 1.x)."""
 
@@ -400,6 +580,14 @@ class LinuxX11Platform:
 
     def hotkey_watcher(self, on_change: Callable[[str, bool], None]) -> ModifierWatcher:
         return ModifierWatcher(modifier_groups(), on_change)
+
+    def combo_watcher(
+        self,
+        bindings: dict[str, tuple[tuple[str, ...], str]],
+        on_action: Callable[[str], None],
+        on_error: Callable[[str], None] | None = None,
+    ) -> ComboWatcher:
+        return ComboWatcher(bindings, on_action, on_error)
 
     def window_rect(self, window: int | None) -> Rect | None:
         return window_rect(window)

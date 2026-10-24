@@ -7,6 +7,7 @@ import asyncio
 from fastapi import APIRouter, status
 
 from vb_typer.api.deps import ContainerDep
+from vb_typer.domain.hotkeys import DEFAULT_HOTKEYS
 from vb_typer.domain.pricing import DEFAULT_TEXT_PRICING, TEXT_PRICING_PER_MILLION
 from vb_typer.schemas.settings import ConnectionTestResult, SettingsRead, SettingsUpdate
 
@@ -29,6 +30,8 @@ def _read(container: ContainerDep) -> SettingsRead:
         allowed_smart_models=list(container.settings.allowed_smart_models),
         text_prices=_text_prices(container.settings.allowed_smart_models),
         week_start=row.week_start,
+        hotkeys=dict(row.hotkeys or DEFAULT_HOTKEYS),
+        default_hotkeys=dict(DEFAULT_HOTKEYS),
         api_key_configured=container.transcription.api_key_present(),
         allowed_models=list(container.settings.allowed_models),
     )
@@ -49,6 +52,7 @@ def update_settings(payload: SettingsUpdate, container: ContainerDep) -> Setting
         default_profile=payload.default_profile,
         smart_model=payload.smart_model,
         week_start=payload.week_start,
+        hotkeys=payload.hotkeys,
     )
     return _read(container)
 

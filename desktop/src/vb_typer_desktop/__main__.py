@@ -18,6 +18,7 @@ from vb_typer_desktop.control import ControlServer, control_socket_path, talk_to
 from vb_typer_desktop.daemon import Daemon
 from vb_typer_desktop.notify import notify
 from vb_typer_desktop.platform import get_platform
+from vb_typer_desktop.profile_switch import DEFAULT_HOTKEYS
 from vb_typer_desktop.tray import start_indicator, start_tray
 from vb_typer_desktop.ui import ui_url
 
@@ -61,6 +62,16 @@ def _status(api: ApiClient, current: preferences.Preferences) -> int:
         return 1
     print(f"Estado: {ready.get('status')}")
     print(f"Banco: {ready.get('database')}")
+    settings = api.settings_or_empty()
+    hotkeys = settings.get("hotkeys")
+    if not isinstance(hotkeys, dict):
+        hotkeys = {}
+    print(
+        "Atalhos de perfil: "
+        f"{hotkeys.get('profile_next', DEFAULT_HOTKEYS['profile_next'])} (próximo) · "
+        f"{hotkeys.get('profile_previous', DEFAULT_HOTKEYS['profile_previous'])} (anterior) · "
+        f"{hotkeys.get('profile_default', DEFAULT_HOTKEYS['profile_default'])} (padrão)"
+    )
     print(f"Chave OpenAI configurada: {'sim' if ready.get('api_key_configured') else 'não'}")
     print(f"Socket de controle: {control_socket_path()}")
     return 0

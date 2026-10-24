@@ -235,6 +235,7 @@
         <aside class="side" aria-label="Seções">
           <button class="side-item" data-section="s-general" aria-current="true">◉ &nbsp;Geral</button>
           <button class="side-item" data-section="s-dictation" aria-current="false">♩ &nbsp;Ditado</button>
+          <button class="side-item" data-section="s-hotkeys" aria-current="false">⇥ &nbsp;Atalhos</button>
           <button class="side-item" data-section="s-credential" aria-current="false">⌘ &nbsp;Credencial</button>
           <button class="side-item" data-section="s-about" aria-current="false">ⓘ &nbsp;Sobre</button>
         </aside>
@@ -286,15 +287,40 @@
                 <option value="sunday">Domingo</option>
               </select>
             </div>
+            <p class="theme-help">
+              O ditado por atalho é do cliente desktop — os atalhos ficam em
+              <strong>Atalhos</strong>. Esta tela grava pelo microfone do navegador.
+            </p>
+          </div>
+
+          <h2 id="s-hotkeys">Atalhos</h2>
+          <div class="settings-card">
             <div class="field-row">
-              <div>Atalho do cliente desktop<span>Segurar para gravar, soltar para transcrever e inserir no cursor.</span></div>
+              <div>Gravar (segurar)<span>Fixo no cliente desktop: solte Ctrl ou Super para transcrever e inserir.</span></div>
               <div class="hotkey">
                 <span class="key">Ctrl</span><span class="muted">+</span><span class="key">Super</span>
               </div>
             </div>
+            <div class="field-row">
+              <div>Próximo perfil<span>Avança na lista de perfis; no último, volta ao primeiro.</span></div>
+              <button class="hotkey-capture" data-hotkey="profile_next" type="button"></button>
+            </div>
+            <div class="field-row">
+              <div>Perfil anterior<span>Volta um perfil na lista.</span></div>
+              <button class="hotkey-capture" data-hotkey="profile_previous" type="button"></button>
+            </div>
+            <div class="field-row">
+              <div>Voltar ao padrão<span>Descarta a troca temporária e volta ao perfil padrão configurado.</span></div>
+              <button class="hotkey-capture" data-hotkey="profile_default" type="button"></button>
+            </div>
             <p class="theme-help">
-              O ditado por atalho é do cliente desktop. Esta tela grava pelo microfone do navegador.
+              Clique na combinação e aperte as teclas (Esc cancela). Os atalhos valem no cliente
+              desktop desta instalação e são aplicados em até 10 segundos. A troca por atalho é
+              temporária: ela não altera o perfil padrão.
             </p>
+            <div class="actions">
+              <button id="hotkeys-restore" class="ghost" type="button">Restaurar padrões</button>
+            </div>
           </div>
 
           <h2 id="s-profiles">Perfis de texto</h2>

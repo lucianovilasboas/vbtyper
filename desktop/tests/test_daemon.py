@@ -569,12 +569,146 @@ def test_a_failed_refresh_never_empties_the_tray_menu():
     agent, _ = build(api=api)
     agent.refresh_options()
     api.list_profiles = lambda: []
-    api.current_options = lambda: ("", "", "", "")
+    api.settings_or_empty = lambda: {}
 
     agent.refresh_options()
 
     assert agent.current_profile == "email"
     assert agent.profiles == FakeApi.DEFAULT_PROFILES
+
+
+# --------------------------------------------------------- atalhos de perfil
+
+
+def test_shortcut_cycles_the_profile_without_changing_the_default():
+    api, platform = FakeApi(default_profile="literal"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+
+    platform.combos.fire("profile_next")
+
+    assert agent.current_profile == "revisado"
+    # A troca por atalho é temporária: nada foi gravado no backend.
+    assert api.patched == []
+    assert agent.state_snapshot()["profile"] == "revisado"
+    agent.stop_listener()
+
+
+def test_shortcut_counts_the_position_and_wraps(make_wav, tmp_path):
+    api, platform = FakeApi(default_profile="literal"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+
+    platform.combos.fire("profile_previous")  # literal -> email (dá a volta)
+
+    assert agent.current_profile == "email"
+    # O próximo ditado vai com o perfil do ciclo.
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    assert api.uploads[0]["profile"] == "email"
+    agent.stop_listener()
+
+
+def test_default_shortcut_goes_back_to_the_configured_default():
+    api, platform = FakeApi(default_profile="email"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+
+    platform.combos.fire("profile_next")  # email é o último: volta ao literal
+    assert agent.current_profile == "literal"
+
+    platform.combos.fire("profile_default")
+
+    assert agent.current_profile == "email"
+    assert agent.state_snapshot()["phase"] == "profile"
+    agent.stop_listener()
+
+
+def test_shortcut_is_ignored_while_dictating_or_processing():
+    api, platform = FakeApi(default_profile="literal"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+    agent.busy = True
+
+    platform.combos.fire("profile_next")
+
+    assert agent.current_profile == "literal"
+    agent.stop_listener()
+
+
+def test_tray_choice_clears_the_temporary_cycle():
+    api, platform = FakeApi(default_profile="literal"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+    platform.combos.fire("profile_next")
+    assert agent.current_profile == "revisado"
+
+    assert agent.control_command("profile", "email") == {"ok": True}
+
+    assert agent.current_profile == "email"
+    assert agent.profile_override == ""
+    agent.stop_listener()
+
+
+def test_shortcut_registers_the_bindings_from_the_settings():
+    api, platform = FakeApi(), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+
+    assert platform.combos.running is True
+    assert platform.combos.bindings["profile_next"] == (("ctrl", "alt"), "Tab")
+    agent.stop_listener()
+    assert platform.combos.running is False
+
+
+def test_a_changed_shortcut_rearms_the_grab():
+    api, platform = FakeApi(), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent.start_listener()
+    agent.refresh_options()
+    first = platform.combos
+
+    api.hotkeys = {
+        "profile_next": "ctrl+alt+F9",
+        "profile_previous": "ctrl+alt+F10",
+        "profile_default": "ctrl+alt+0",
+    }
+    agent.refresh_options()
+
+    assert first.running is False
+    assert len(platform.combo_watchers) == 2
+    assert platform.combos.bindings["profile_next"] == (("ctrl", "alt"), "F9")
+    agent.stop_listener()
+
+
+def test_a_grab_failure_warns_once_and_the_dictation_goes_on():
+    api, platform = FakeApi(), FakePlatform()
+    agent, notifications = build(api=api, platform=platform)
+    agent.start_listener()
+
+    platform.combos.fail("combinação em uso")
+    platform.combos.fail("combinação em uso")
+
+    assert sum("atalho indisponível" in message for message in messages(notifications)) == 1
+    assert agent.listening is True
+    agent.stop_listener()
+
+
+def test_platform_without_combo_support_keeps_dictation_working():
+    api, platform = FakeApi(), FakePlatform()
+    platform.combo_watcher = None  # capacidade opcional ausente
+    agent, _ = build(api=api, platform=platform)
+
+    agent.start_listener()
+
+    assert agent.listening is True
+    assert agent.combo_watcher is None
+    agent.stop_listener()
 
 
 # ------------------------------------------------------------------- onda
