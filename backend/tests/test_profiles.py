@@ -1,4 +1,4 @@
-"""Perfis de texto: embutidos (somente leitura) e personalizados."""
+"""Perfis de texto: padrões semeados no banco e perfis personalizados."""
 
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ async def test_builtin_profiles_are_listed(client, auth):
     slugs = {item["slug"] for item in profiles}
     assert BUILTIN_SLUGS.issubset(slugs)
     assert all(item["instructions"] or item["slug"] == "literal" for item in builtin)
+    # A ordem curada dos padrões é preservada.
+    assert [item["slug"] for item in builtin][:3] == ["literal", "revisado", "email"]
 
 
 async def test_create_custom_profile(client, auth):
@@ -63,13 +65,52 @@ async def test_unknown_option_is_ignored(client, auth):
     assert response.json()["options"] == {}
 
 
-async def test_builtin_cannot_be_edited_or_deleted(client, auth):
-    patched = await client.patch(f"{ENDPOINT}/email", headers=auth, json={"name": "Outro"})
-    assert patched.status_code == 409
-    assert patched.json()["error"]["code"] == "conflict"
+async def test_seeded_profile_can_be_edited_and_deleted(client, auth):
+    patched = await client.patch(
+        f"{ENDPOINT}/email", headers=auth, json={"name": "E-mail do trabalho"}
+    )
+    assert patched.status_code == 200
+    assert patched.json()["name"] == "E-mail do trabalho"
+    assert patched.json()["builtin"] is True
 
-    deleted = await client.delete(f"{ENDPOINT}/email", headers=auth)
+    deleted = await client.delete(f"{ENDPOINT}/ata", headers=auth)
+    assert deleted.status_code == 204
+    listing = await client.get(ENDPOINT, headers=auth)
+    assert "ata" not in [item["slug"] for item in listing.json()]
+
+
+async def test_literal_can_be_renamed_but_not_deleted(client, auth):
+    renamed = await client.patch(f"{ENDPOINT}/literal", headers=auth, json={"name": "Texto cru"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Texto cru"
+    assert renamed.json()["instructions"] == ""
+
+    deleted = await client.delete(f"{ENDPOINT}/literal", headers=auth)
     assert deleted.status_code == 409
+    assert deleted.json()["error"]["code"] == "conflict"
+
+
+async def test_deleting_the_default_profile_falls_back_to_literal(client, auth):
+    changed = await client.patch(
+        "/api/v1/settings", headers=auth, json={"default_profile": "email"}
+    )
+    assert changed.status_code == 200
+    assert changed.json()["default_profile"] == "email"
+
+    assert (await client.delete(f"{ENDPOINT}/email", headers=auth)).status_code == 204
+
+    settings = (await client.get("/api/v1/settings", headers=auth)).json()
+    assert settings["default_profile"] == "literal"
+    assert settings["mode"] == "literal"
+
+
+async def test_seed_does_not_resurrect_a_deleted_profile(app, client, auth):
+    assert (await client.delete(f"{ENDPOINT}/ata", headers=auth)).status_code == 204
+
+    app.state.container.profiles.seed_defaults()
+
+    listing = await client.get(ENDPOINT, headers=auth)
+    assert "ata" not in [item["slug"] for item in listing.json()]
 
 
 async def test_custom_can_be_updated_and_deleted(client, auth):

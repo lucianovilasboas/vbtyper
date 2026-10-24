@@ -89,6 +89,27 @@ async def test_smart_mode_skips_the_adjustment_when_there_is_nothing_to_convert(
     assert all("chat/completions" not in str(call.request.url) for call in respx_mock.calls)
 
 
+async def test_edited_revisado_always_runs_the_adjustment(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Se o prompt do "Texto revisado" foi editado, o pulo por heurística não vale."""
+    patched = await client.patch(
+        "/api/v1/profiles/revisado",
+        headers=auth,
+        json={"instructions": "Ajuste o texto para o português escrito, com pontuação."},
+    )
+    assert patched.status_code == 200
+
+    created = await _run(
+        client, auth, respx_mock, make_wav(1.0), mode="smart", audio_text="manda um oi pra ela"
+    )
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    assert job["result"]["text"] == AJUSTADO
+    chat = [call for call in respx_mock.calls if "chat/completions" in str(call.request.url)]
+    assert len(chat) == 1
+
+
 async def test_smart_failure_delivers_the_literal_text(
     client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
 ):

@@ -903,7 +903,7 @@ function renderProfilesList() {
     if (profile.builtin) {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = "embutido";
+      badge.textContent = "padrão";
       name.append(badge);
     }
     const meta = [];
@@ -953,17 +953,18 @@ function renderProfilesList() {
     });
     actions.append(duplicate);
 
-    if (!profile.builtin) {
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.textContent = "editar";
-      edit.addEventListener("click", () => openProfileEditor(profile));
-      actions.append(edit);
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "editar";
+    edit.addEventListener("click", () => openProfileEditor(profile));
+    actions.append(edit);
 
+    if (profile.slug !== "literal") {
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "excluir";
       remove.addEventListener("click", async () => {
+        if (!window.confirm(`Excluir o perfil "${profile.name}"?`)) return;
         try {
           await api.deleteProfile(profile.slug);
           if (state.settings.default_profile === profile.slug) {
@@ -983,9 +984,31 @@ function renderProfilesList() {
   }
 }
 
+const PROFILE_FIELDS = [
+  "profile-instructions",
+  "profile-tone",
+  "profile-concision",
+  "profile-terms",
+  "profile-model",
+  "profile-item-input",
+  "profile-item-add",
+];
+
+function setProfileFieldsEnabled(enabled) {
+  // A transcrição fiel não tem instruções: só o nome pode mudar.
+  for (const id of PROFILE_FIELDS) {
+    const element = $(id);
+    if (element) element.disabled = !enabled;
+  }
+  const note = $("profile-literal-note");
+  if (note) note.hidden = enabled;
+}
+
 function openProfileEditor(profile) {
+  const literal = Boolean(profile && profile.slug === "literal");
   state.profileEditing = profile ? profile.slug : null;
   $("profile-editor").hidden = false;
+  setProfileFieldsEnabled(!literal);
   $("profile-name").value = profile ? profile.name : "";
   $("profile-instructions").value = profile ? profile.instructions : "";
   $("profile-tone").value = (profile && profile.options && profile.options.tom) || "";
@@ -1002,6 +1025,7 @@ function openProfileEditor(profile) {
 
 function closeProfileEditor() {
   state.profileEditing = null;
+  setProfileFieldsEnabled(true);
   $("profile-editor").hidden = true;
 }
 
@@ -1016,7 +1040,9 @@ async function saveProfile() {
   if ($("profile-model").value) options.modelo = $("profile-model").value;
 
   try {
-    if (state.profileEditing) {
+    if (state.profileEditing === "literal") {
+      await api.patchProfile("literal", { name });
+    } else if (state.profileEditing) {
       await api.patchProfile(state.profileEditing, { name, instructions, options });
     } else {
       await api.createProfile({ name, instructions, options });

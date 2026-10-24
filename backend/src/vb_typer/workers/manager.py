@@ -19,6 +19,7 @@ from vb_typer.domain.profiles import (
     REVISED_SLUG,
     compose_instructions,
     is_literal,
+    is_pristine,
 )
 from vb_typer.services.normalize import needs_normalization
 from vb_typer.services.profiles import ProfileService
@@ -82,9 +83,9 @@ class JobManager:
         """
         if is_literal(profile.slug):
             return text, TranscriptionMode.LITERAL, None, LITERAL_SLUG
-        # O filtro conservador só vale para o "Texto revisado": os perfis
-        # editoriais sempre têm o que fazer.
-        if profile.slug == REVISED_SLUG and not needs_normalization(text):
+        # O filtro conservador só vale para o "Texto revisado" **de fábrica**: se
+        # o usuário editou o prompt, o ajuste sempre roda.
+        if profile.slug == REVISED_SLUG and not needs_normalization(text) and is_pristine(profile):
             return text, TranscriptionMode.SMART, None, profile.slug
         await asyncio.to_thread(self.service.set_phase, context.id, "rendering")
         try:

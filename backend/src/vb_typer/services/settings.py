@@ -10,7 +10,7 @@ from vb_typer.core.timeutil import local_stamp
 from vb_typer.db.models import AppSetting, Profile
 from vb_typer.domain.errors import DomainError, InvalidModelError
 from vb_typer.domain.hotkeys import DEFAULT_HOTKEYS, validate_map
-from vb_typer.domain.profiles import BUILTIN_BY_SLUG, LITERAL_SLUG, REVISED_SLUG
+from vb_typer.domain.profiles import LITERAL_SLUG, REVISED_SLUG
 
 
 class SettingsService:
@@ -124,6 +124,4 @@ class SettingsService:
 
     @staticmethod
     def _profile_exists(session: Session, slug: str) -> bool:
-        if slug in BUILTIN_BY_SLUG:
-            return True
         return session.scalar(select(Profile).where(Profile.slug == slug)) is not None

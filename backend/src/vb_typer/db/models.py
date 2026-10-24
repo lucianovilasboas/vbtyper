@@ -84,11 +84,13 @@ class AppSetting(Base):
     week_start: Mapped[str] = mapped_column(String(16), nullable=False, default="monday")
     # Atalhos do cliente desktop ({"profile_next": "ctrl+alt+Tab", ...}).
     hotkeys: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # A semente dos perfis padrão já rodou (uma vez; apagar não ressuscita).
+    profiles_seeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)
 
 
 class Profile(Base):
-    """Perfil personalizado (os embutidos vivem em ``domain/profiles.py``)."""
+    """Perfil de texto; os padrões nascem de uma semente e são editáveis."""
 
     __tablename__ = "profiles"
 
@@ -98,6 +100,10 @@ class Profile(Base):
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
     hint: Mapped[str | None] = mapped_column(Text)
     options: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Veio do padrão (badge "padrão" no app); não é mais somente leitura.
+    seeded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Ordem dos padrões na lista; os personalizados usam 0 e caem no nome.
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String(19), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)
 

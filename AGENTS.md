@@ -139,6 +139,13 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     com `XGrabKey` (o aplicativo não as vê; sem o grab, `Ctrl+Alt+Tab` trocaria de
     aba); o atalho de gravar (Ctrl+Super) continua só observado, sem grab. A
     gramática é validada no backend (`domain/hotkeys.py`) e recusa Ctrl+Super juntos.
+19. Os perfis de texto vivem todos no banco (`profiles`). Os dez padrões são
+    semeados **uma única vez** na primeira inicialização
+    (`app_settings.profiles_seeded`) a partir de `domain/profiles.py`; depois são
+    editáveis e removíveis, e apagar um não o ressuscita. A transcrição fiel
+    (`literal`) é a base do ditado e o fallback do `default_profile`: pode ser
+    renomeada, mas **não** excluída. `profiles.seeded` marca a origem (badge
+    "padrão") e `sort_order` preserva a ordem curada; personalizados vêm por nome.
 
 ## Testes
 

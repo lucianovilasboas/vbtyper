@@ -10,7 +10,11 @@ from vb_typer.db.models import Profile
 
 class ProfileRepository:
     def list(self, session: Session) -> list[Profile]:
-        return list(session.scalars(select(Profile).order_by(Profile.name)).all())
+        return list(
+            session.scalars(
+                select(Profile).order_by(Profile.seeded.desc(), Profile.sort_order, Profile.name)
+            ).all()
+        )
 
     def get(self, session: Session, slug: str) -> Profile | None:
         return session.scalar(select(Profile).where(Profile.slug == slug))

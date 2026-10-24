@@ -48,9 +48,11 @@ em tempos, então perfis criados ou apagados na interface aparecem sem reiniciar
 
 ### Perfis de texto: **feito em `v0.12.0`** (backend + web; Linux feito)
 
-Dez perfis embutidos — literal, revisado, e-mail, WhatsApp, programação, prompt,
-acadêmico, currículo, carta e ata — mais perfis personalizados (duplicar e
-editar; os embutidos são somente leitura). A transcrição fiel fica em
+Dez perfis padrão — literal, revisado, e-mail, WhatsApp, programação, prompt,
+acadêmico, currículo, carta e ata — mais perfis personalizados. Todos vivem no
+banco: os padrões são semeados uma única vez e podem ser editados, duplicados ou
+removidos; só a transcrição fiel não pode ser excluída (é a base do ditado e o
+fallback do perfil padrão). A transcrição fiel fica em
 `transcriptions.raw_text` e é a **fonte de toda versão editorial**:
 `transcription_versions` guarda cada geração com texto, modelo, tokens e custo, e
 a conversão nunca parte de uma versão já editada. O job aceita `profile` (`mode`

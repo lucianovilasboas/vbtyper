@@ -266,6 +266,9 @@ class Daemon:
         if profiles:
             self.profiles = profiles
             slugs = {item["slug"] for item in profiles}
+            if self.profile_override and self.profile_override not in slugs:
+                # Perfil apagado na interface: a troca temporária perde o sentido.
+                self.profile_override = ""
             if profile and profile not in slugs:
                 # Perfil apagado na interface enquanto o cliente rodava.
                 profile = "literal" if "literal" in slugs else ""
