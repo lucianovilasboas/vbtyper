@@ -20,6 +20,7 @@ from vb_typer.domain.profiles import (
     REVISED_SLUG,
     compose_instructions,
     is_literal,
+    is_nothing_new,
     is_pristine,
 )
 from vb_typer.services.continuity import ContinuityService
@@ -125,7 +126,10 @@ class JobManager:
             logger.warning("Perfil %s falhou (job %s): %s", profile.slug, context.id, exc)
             return AppliedProfile(text, TranscriptionMode.LITERAL, None, LITERAL_SLUG)
         count = gathered.count if gathered is not None else 0
-        return AppliedProfile(adjusted or text, TranscriptionMode.SMART, usage, profile.slug, count)
+        # O modelo pode concluir que o ditado só repetia o que já estava escrito:
+        # o job conclui sem texto (nada é inserido) em vez de devolver o literal.
+        final_text = "" if is_nothing_new(adjusted) else (adjusted or text)
+        return AppliedProfile(final_text, TranscriptionMode.SMART, usage, profile.slug, count)
 
     async def cancel(self, job_id: str) -> None:
         await asyncio.to_thread(self.service.request_cancel, job_id)

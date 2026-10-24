@@ -165,12 +165,43 @@ def test_instructions_only_mention_continuity_when_asked():
     without = compose_instructions(profile)
     with_context = compose_instructions(profile, continuity=True)
 
-    assert "continuidade" not in without
-    assert "continuidade" in with_context
+    from vb_typer.domain.profiles import CONTINUITY_RULES
+
+    assert "Continuidade com o que já foi ditado" not in without
+    assert "Continuidade com o que já foi ditado" in with_context
     assert "Faça um e-mail." in without
     assert "Faça um e-mail." in with_context
-    # A regra base continua: o novo trecho é a única fonte de conteúdo.
+    # A regra base continua primeiro: o novo trecho é a única fonte de conteúdo.
     assert with_context.startswith(without.split("\n\n")[0])
+    # As regras de continuidade vêm por último, para vencerem as do perfil
+    # (que costumam pedir "mantenha os prazos exatamente como foram ditos").
+    assert with_context.endswith(CONTINUITY_RULES.strip())
+
+
+def test_continuity_asks_to_drop_ideas_already_written():
+    """O requisito central: reafirmação do que já está no documento é descartada."""
+    from vb_typer.domain.profiles import CONTINUITY_RULES
+
+    flat = " ".join(CONTINUITY_RULES.split())
+
+    assert "Descarte do novo trecho" in flat
+    assert "não o copie na resposta" in flat
+    # O modelo precisa saber como terminar quando não sobra nada.
+    assert "[nada novo]" in flat
+    # Os exemplos são o que impedem copiar o contexto ou engolir informação nova.
+    assert "Exemplos" in flat
+    assert "Nunca copie o texto já escrito na resposta." in flat
+
+
+def test_nothing_new_marker_accepts_the_models_variations():
+    from vb_typer.domain.profiles import NOTHING_NEW, is_nothing_new
+
+    assert is_nothing_new(NOTHING_NEW) is True
+    assert is_nothing_new("[Nada novo].") is True
+    assert is_nothing_new("nada a acrescentar") is True
+    assert is_nothing_new("nada de novo") is True
+    assert is_nothing_new("segue o texto") is False
+    assert is_nothing_new("") is False
 
 
 def test_user_content_marks_the_previous_text_as_context():

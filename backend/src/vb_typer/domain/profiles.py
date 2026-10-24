@@ -53,18 +53,42 @@ CONTEXT_HEADER = "[DITADOS ANTERIORES — contexto, não reescreva]"
 CONTEXT_FOOTER = "[FIM DOS DITADOS ANTERIORES]"
 NEW_DICTATION_HEADER = "[NOVO DITADO — escreva apenas este trecho]"
 
-# Regras que só entram quando há contexto; as de BASE_RULES continuam valendo
-# para o novo trecho (o contexto não é fonte de conteúdo).
+# Regras que só entram quando há contexto e vêm por último, para valerem sobre as
+# do perfil: o que já está escrito não se repete, mesmo que o novo ditado repita.
+# O texto abaixo foi verificado com chamadas reais (24/10): sem os exemplos, o
+# modelo copiava o contexto de volta ou engolia informação nova.
 CONTINUITY_RULES = """\
-As regras acima valem para o NOVO trecho. Antes dele vem um bloco com ditados
-anteriores da mesma pessoa: ele serve só para continuidade.
-- Não reescreva, não repita e não resuma o que já foi ditado.
-- Mantenha o fio do raciocínio: nomes, termos, decisões e referências já citados
-  continuam valendo.
-- Responda apenas com o texto do novo trecho, começando onde o anterior parou;
-  se ele terminou no meio da frase, comece em minúscula e sem repetir o começo.
-- Se o novo trecho não tiver relação com o anterior, ignore o contexto.
+Continuidade com o que já foi ditado (vencem as regras do perfil sobre repetição):
+- O bloco [DITADOS ANTERIORES] já está escrito no documento: não o reescreva e não o
+  copie na resposta.
+- Descarte do novo trecho o que reafirmar ideia, fato, número, pedido ou exemplo já
+  escrito; mantenha apenas o que acrescenta. Nomes e termos técnicos podem ser usados
+  quando a frase precisar.
+- Responda só com o trecho novo, emendado ao fim do anterior (minúscula se a frase
+  ficou aberta).
+- Se o novo trecho não acrescentar nada, responda apenas [nada novo].
+- Se não tiver relação com o anterior, ignore o contexto e escreva o trecho normal.
+
+Exemplos (o texto já escrito aparece entre « »):
+- Já escrito: «O prazo é sexta-feira.» Novo ditado: "Também precisamos do orçamento
+  de outubro." Resposta: Também precisamos do orçamento de outubro.
+- Já escrito: «O prazo é sexta-feira.» Novo ditado: "O prazo é sexta-feira e também
+  precisamos do orçamento de outubro." Resposta: Também precisamos do orçamento de
+  outubro.
+- Já escrito: «O prazo é sexta-feira.» Novo ditado: "O prazo é sexta-feira." Resposta:
+  [nada novo]
+Nunca copie o texto já escrito na resposta.
 """
+
+NOTHING_NEW = "[nada novo]"
+# O modelo às vezes parafraseia o marcador; estas formas contam como "nada novo".
+_NOTHING_NEW_FORMS = {"nada novo", "nada de novo", "nada a acrescentar"}
+
+
+def is_nothing_new(text: str | None) -> bool:
+    """A resposta diz que o ditado só repetia o que já estava escrito?"""
+    cleaned = (text or "").strip().strip("[](){}.").strip().casefold()
+    return cleaned in _NOTHING_NEW_FORMS
 
 
 def compose_user_content(text: str, context: str | None = None) -> str:
@@ -265,10 +289,7 @@ def compose_instructions(profile: ProfileSpec, *, continuity: bool = False) -> s
     Com ``continuity``, entram as regras da memória entre ditados: o contexto
     anterior nunca é fonte de conteúdo nem deve ser reescrito.
     """
-    parts = [BASE_RULES.strip()]
-    if continuity:
-        parts.append(CONTINUITY_RULES.strip())
-    parts.append(profile.instructions.strip())
+    parts = [BASE_RULES.strip(), profile.instructions.strip()]
     options = profile.options or {}
 
     items = [str(item).strip() for item in options.get("items") or [] if str(item).strip()]
@@ -284,6 +305,10 @@ def compose_instructions(profile: ProfileSpec, *, continuity: bool = False) -> s
         style.append("preserve termos técnicos como foram ditos")
     if style:
         parts.append("Ajustes de estilo: " + "; ".join(style) + ".")
+    # Por último, de propósito: em matéria de repetição, estas regras vencem as do
+    # perfil (que costumam pedir "mantenha os prazos exatamente como foram falados").
+    if continuity:
+        parts.append(CONTINUITY_RULES.strip())
     return "\n\n".join(part for part in parts if part)
 
 
