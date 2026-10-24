@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 24/10/2026 — tudo em `v0.17.1` (backend: 165 testes; desktop:
+Última atualização: 24/10/2026 — tudo em `v0.17.2` (backend: 167 testes; desktop:
 242 testes).
 
 ---
@@ -99,6 +99,13 @@ quando a frase precisa. Se o ditado não acrescentar nada, o modelo responde
 verificado com chamadas reais em quatro cenários (continuação, repetição parcial,
 repetição total e assunto sem relação) — a checagem ficou em
 `scripts/verify-continuity.py` para poder ser repetida.
+
+**"Nada a acrescentar" em vez de erro (`v0.17.2`).** Com o texto vazio (ditado que só
+repetia), o cliente antigo acusava "A API não reconheceu fala"; agora o job conclui sem
+texto e o cliente avisa **"nada a acrescentar"** (fase própria do indicador, sem balão
+de erro). O backend também aceita resposta **vazia** do modelo quando há contexto de
+continuidade (antes virava erro e caía no literal repetido); sem contexto, vazio
+continua sendo falha do ajuste.
 
 ### Modelo do texto e itens de perfil: **feito em `v0.13.0`**
 

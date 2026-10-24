@@ -159,9 +159,10 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     continuação). O objetivo é o **bloco coerente**: reafirmação de ideia, fato ou
     número que já está escrito é **descartada** (nomes e termos seguem permitidos
     quando a frase precisar deles), e, se não sobrar nada novo, o modelo responde
-    `[nada novo]` — o job conclui **sem texto**, nada é inserido e o cliente mostra
-    "nada novo" (não é erro). Essas regras ficam no **fim** do prompt de propósito,
-    para valerem sobre as instruções do perfil, com exemplos — sem eles o modelo
+    `[nada novo]` (ou resposta vazia, quando há contexto) — o job conclui **sem
+    texto**, nada é inserido e o cliente mostra "nada a acrescentar" (não é erro).
+    Essas regras ficam no **fim** do prompt de propósito, para valerem sobre as
+    instruções do perfil, com exemplos — sem eles o modelo
     copiava o contexto de volta ou engolia informação nova (verificado com chamadas
     reais). A checagem de comportamento é manual e reproduzível:
     `scripts/verify-continuity.py` (gasta centavos, não roda em teste).
