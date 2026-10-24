@@ -37,6 +37,8 @@ JOB_TIMEOUT_S = 180.0
 OPTIONS_REFRESH_S = 10.0
 # Quanto tempo a pílula do perfil fica no indicador depois do atalho.
 PROFILE_FLASH_S = 1.2
+# Aviso de que o ditado repetia o que já estava escrito (nada é inserido).
+NOTHING_FLASH_S = 2.0
 MODES = ("literal", "smart")
 INSERTED_FLASH_S = 1.2
 ERROR_FLASH_S = 3.0
@@ -191,7 +193,7 @@ class Daemon:
             get_waveform = getattr(self.recorder, "waveform", None)
             if callable(get_waveform):
                 snapshot["waveform"] = get_waveform()
-        if phase in ("inserted", "error", "profile") and self._flash_message:
+        if phase in ("inserted", "error", "profile", "nothing") and self._flash_message:
             snapshot["message"] = self._flash_message
         box = self._indicator_box(phase)
         if box is not None:
@@ -563,7 +565,11 @@ class Daemon:
             raise RuntimeError(job.error or "A transcrição falhou.")
         text = (job.text or "").strip()
         if not text:
-            raise RuntimeError("A API não reconheceu fala nesse áudio.")
+            # Perfil contínuo com tudo já escrito: o job conclui sem texto e não há
+            # nada a inserir. Isso é sucesso, não erro de reconhecimento.
+            self._flash("nothing", "nada novo", NOTHING_FLASH_S)
+            self._notify("VB Typer", "Nada novo: o ditado repetia o que já estava escrito.")
+            return
         self.last_transcript = text
         if self.cancel.is_set():
             return
