@@ -567,8 +567,10 @@ class Daemon:
         if not text:
             # Perfil contínuo com tudo já escrito: o job conclui sem texto e não há
             # nada a inserir. Isso é sucesso, não erro de reconhecimento.
-            self._flash("nothing", "nada novo", NOTHING_FLASH_S)
-            self._notify("VB Typer", "Nada novo: o ditado repetia o que já estava escrito.")
+            self._flash("nothing", "nada a acrescentar", NOTHING_FLASH_S)
+            self._notify(
+                "VB Typer", "Nada a acrescentar: o ditado repetia o que já estava escrito."
+            )
             return
         self.last_transcript = text
         if self.cancel.is_set():

@@ -139,7 +139,7 @@ def test_empty_result_is_nothing_new_not_an_error(make_wav, tmp_path):
     # O indicador mostra "nada novo": é aviso de rotina, não erro.
     snapshot = agent.state_snapshot()
     assert snapshot["phase"] == "nothing"
-    assert snapshot["message"] == "nada novo"
+    assert snapshot["message"] == "nada a acrescentar"
 
 
 def test_failed_job_with_empty_text_still_reports_the_error(make_wav, tmp_path):
@@ -748,7 +748,7 @@ def test_nothing_new_is_success_and_types_nothing():
     assert api.inserts == []
     snapshot = agent.state_snapshot()
     assert snapshot["phase"] == "nothing"
-    assert snapshot["message"] == "nada novo"
+    assert snapshot["message"] == "nada a acrescentar"
 
 
 # ------------------------------------------------------------------- onda

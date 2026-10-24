@@ -1134,7 +1134,7 @@ function historyRow(item) {
   const nothingNew = !item.error && !item.text && item.continuity_count > 0;
   text.className = item.error || nothingNew ? "empty-hint" : "text";
   text.textContent =
-    item.error || item.text || (nothingNew ? "nada novo — repetia o que já estava escrito" : "(sem texto)");
+    item.error || item.text || (nothingNew ? "nada a acrescentar — repetia o que já estava escrito" : "(sem texto)");
   body.append(text);
   if (item.mode === "smart") {
     const badge = document.createElement("span");
