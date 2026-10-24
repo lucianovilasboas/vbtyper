@@ -9,6 +9,7 @@ from vb_typer.core.config import TRANSCRIPTION_MODES, WEEK_STARTS, AppSettings
 from vb_typer.core.timeutil import local_stamp
 from vb_typer.db.models import AppSetting, Profile
 from vb_typer.domain.errors import DomainError, InvalidModelError
+from vb_typer.domain.hotkeys import DEFAULT_HOTKEYS, validate_map
 from vb_typer.domain.profiles import BUILTIN_BY_SLUG, LITERAL_SLUG, REVISED_SLUG
 
 
@@ -29,6 +30,7 @@ class SettingsService:
                     default_profile=self.settings.default_mode,
                     smart_model=self.settings.smart_model,
                     week_start=self.settings.week_start,
+                    hotkeys=dict(DEFAULT_HOTKEYS),
                     updated_at=local_stamp(),
                 )
                 session.add(row)
@@ -52,6 +54,7 @@ class SettingsService:
         default_profile: str | None = None,
         smart_model: str | None = None,
         week_start: str | None = None,
+        hotkeys: dict[str, str] | None = None,
     ) -> AppSetting:
         with self.session_factory() as session:
             row = session.get(AppSetting, 1)
@@ -64,6 +67,7 @@ class SettingsService:
                     default_profile=self.settings.default_mode,
                     smart_model=self.settings.smart_model,
                     week_start=self.settings.week_start,
+                    hotkeys=dict(DEFAULT_HOTKEYS),
                     updated_at=local_stamp(),
                 )
                 session.add(row)
@@ -109,6 +113,10 @@ class SettingsService:
                         f"week_start deve ser um de {WEEK_STARTS}.", code="invalid_week_start"
                     )
                 row.week_start = normalized
+            if hotkeys is not None:
+                # Atualização parcial: completa com o que já estava gravado.
+                merged = {**DEFAULT_HOTKEYS, **(row.hotkeys or {}), **hotkeys}
+                row.hotkeys = validate_map(merged)
             row.updated_at = local_stamp()
             session.commit()
             session.refresh(row)

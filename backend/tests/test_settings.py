@@ -106,3 +106,69 @@ async def test_invalid_smart_model_is_rejected(client, auth):
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_smart_model"
+
+
+async def test_hotkeys_come_with_the_defaults(client, auth):
+    """A aba Configurações mostra as combinações e o padrão para restaurar."""
+    body = (await client.get("/api/v1/settings", headers=auth)).json()
+
+    assert body["hotkeys"] == {
+        "profile_next": "ctrl+alt+Tab",
+        "profile_previous": "ctrl+alt+shift+Tab",
+        "profile_default": "ctrl+alt+0",
+    }
+    assert body["default_hotkeys"] == body["hotkeys"]
+
+
+async def test_patch_updates_hotkeys_and_normalizes(client, auth):
+    response = await client.patch(
+        "/api/v1/settings",
+        headers=auth,
+        json={"hotkeys": {"profile_next": "ALT+CTRL+F9", "profile_previous": "ctrl+alt+F10"}},
+    )
+
+    assert response.status_code == 200
+    hotkeys = response.json()["hotkeys"]
+    # Modificadores em ordem canônica; a ação não enviada continua no padrão.
+    assert hotkeys["profile_next"] == "ctrl+alt+F9"
+    assert hotkeys["profile_previous"] == "ctrl+alt+F10"
+    assert hotkeys["profile_default"] == "ctrl+alt+0"
+
+
+async def test_patch_rejects_hotkey_without_modifier(client, auth):
+    response = await client.patch(
+        "/api/v1/settings", headers=auth, json={"hotkeys": {"profile_next": "Tab"}}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_hotkey"
+
+
+async def test_patch_rejects_ctrl_super_combo(client, auth):
+    """Ctrl+Super é o atalho de gravar: um perfil ali começaria um ditado."""
+    response = await client.patch(
+        "/api/v1/settings", headers=auth, json={"hotkeys": {"profile_next": "ctrl+super+Tab"}}
+    )
+
+    assert response.status_code == 400
+    assert "gravar" in response.json()["error"]["message"]
+
+
+async def test_patch_rejects_repeated_combo(client, auth):
+    response = await client.patch(
+        "/api/v1/settings",
+        headers=auth,
+        json={"hotkeys": {"profile_next": "ctrl+alt+Tab", "profile_previous": "alt+ctrl+Tab"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_hotkey"
+
+
+async def test_patch_rejects_unknown_key(client, auth):
+    response = await client.patch(
+        "/api/v1/settings", headers=auth, json={"hotkeys": {"profile_next": "ctrl+alt+Tecla"}}
+    )
+
+    assert response.status_code == 400
+    assert "Tecla desconhecida" in response.json()["error"]["message"]

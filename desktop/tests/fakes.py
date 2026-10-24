@@ -6,6 +6,7 @@ from pathlib import Path
 
 from vb_typer_desktop.api import Job
 from vb_typer_desktop.geometry import Rect
+from vb_typer_desktop.profile_switch import DEFAULT_HOTKEYS
 
 # Áreas padrão dos dublês: uma janela qualquer dentro de uma tela 1920x1080.
 DEFAULT_WINDOW_AREA = Rect(100, 200, 900, 600)
@@ -55,6 +56,7 @@ class FakePlatform:
         self.typed: list[str] = []
         self.targets: list[int | None] = []
         self.watcher: FakeWatcher | None = None
+        self.combo_watchers: list[FakeComboWatcher] = []
 
     def ensure_session(self) -> None:
         if self.session_failure is not None:
@@ -75,6 +77,15 @@ class FakePlatform:
         self.watcher = FakeWatcher(on_change)
         return self.watcher
 
+    def combo_watcher(self, bindings, on_action, on_error=None) -> FakeComboWatcher:
+        watcher = FakeComboWatcher(bindings, on_action, on_error)
+        self.combo_watchers.append(watcher)
+        return watcher
+
+    @property
+    def combos(self) -> FakeComboWatcher:
+        return self.combo_watchers[-1]
+
     def window_rect(self, window: int | None) -> Rect | None:
         return self.window_area if window is not None else None
 
@@ -83,6 +94,31 @@ class FakePlatform:
 
     def pointer_position(self) -> tuple[int, int] | None:
         return self.pointer
+
+
+class FakeComboWatcher:
+    """Observador das combinações de perfil, disparado pelo teste."""
+
+    def __init__(self, bindings, on_action, on_error=None) -> None:
+        self.bindings = bindings
+        self.on_action = on_action
+        self.on_error = on_error
+        self.running = False
+        self.starts = 0
+
+    def start(self) -> None:
+        self.starts += 1
+        self.running = True
+
+    def stop(self) -> None:
+        self.running = False
+
+    def fire(self, action: str) -> None:
+        self.on_action(action)
+
+    def fail(self, message: str) -> None:
+        if self.on_error is not None:
+            self.on_error(message)
 
 
 class FakeApi:
@@ -107,11 +143,13 @@ class FakeApi:
         default_profile: str = "literal",
         profiles: list[dict] | None = None,
         phase: str = "",
+        hotkeys: dict[str, str] | None = None,
     ) -> None:
         self.mode = mode
         self.phase = phase
         self.default_profile = default_profile
         self.profiles = list(profiles) if profiles is not None else list(self.DEFAULT_PROFILES)
+        self.hotkeys = dict(hotkeys) if hotkeys is not None else dict(DEFAULT_HOTKEYS)
         self.text = text
         self.status = status
         self.error = error
@@ -134,7 +172,11 @@ class FakeApi:
             "language": self.language,
             "mode": self.mode,
             "default_profile": self.default_profile,
+            "hotkeys": dict(self.hotkeys),
         }
+
+    def settings_or_empty(self) -> dict:
+        return self.settings()
 
     def current_options(self) -> tuple[str, str, str, str]:
         return self.model, self.language, self.mode, self.default_profile

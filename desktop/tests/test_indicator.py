@@ -127,6 +127,8 @@ def test_levels_clamp_out_of_range_values(indicator):
 def test_phase_comes_from_the_snapshot(indicator):
     assert indicator.phase_from_state({"phase": "recording"}) == "recording"
     assert indicator.phase_from_state({"phase": "error"}) == "error"
+    # Pílula do perfil trocado por atalho.
+    assert indicator.phase_from_state({"phase": "profile"}) == "profile"
 
 
 def test_phase_falls_back_for_old_snapshots(indicator):

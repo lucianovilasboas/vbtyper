@@ -26,6 +26,25 @@ lugar onde a interface o edita — e a bandeja relê a configuração de tempos 
 tempos, então uma troca feita na tela aparece no menu sozinha. Perfis criados ou
 apagados na interface também aparecem/desaparecem sem reiniciar o cliente.
 
+### Trocar o perfil pelo teclado
+
+| Atalho | Ação |
+|---|---|
+| **Ctrl+Alt+Tab** | próximo perfil |
+| **Ctrl+Alt+Shift+Tab** | perfil anterior |
+| **Ctrl+Alt+0** | volta ao perfil padrão |
+
+A troca é **temporária**: vale para os próximos ditados e não altera o perfil
+padrão gravado no backend — o atalho do padrão descarta o ciclo, e reiniciar o
+cliente também. O indicador mostra o nome do perfil por um instante. Escolher um
+perfil pela bandeja (ou pela interface) limpa o ciclo.
+
+As combinações são editáveis em **Configurações › Atalhos** na interface web
+(ficam no backend, não neste arquivo) e o cliente as aplica em até 10 segundos,
+sem reiniciar. No Linux/X11 elas são *capturadas* com `XGrabKey`: o aplicativo em
+foco não as recebe — sem isso, `Ctrl+Alt+Tab` trocaria de aba no navegador antes
+de trocar o perfil. O atalho de gravar continua apenas observado.
+
 Antes de usar, a API precisa estar no ar e com a chave configurada:
 
 ```bash
@@ -188,6 +207,7 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
 | `api.py` | cliente REST e leitura do token (`~/.config/vb-typer/api-token`) |
 | `audio.py` | `arecord`, medição de nível, validação e reparo do WAV |
 | `hotkey.py` | máquina de estados do Ctrl+Super |
+| `profile_switch.py` | ciclo de perfis e leitura das combinações (puro) |
 | `geometry.py` | posição do indicador (cálculo puro, sem X e sem GTK) |
 | `preferences.py` | preferências do cliente |
 | `control.py` | socket Unix usado pelos helpers (`vb-typer-desktop-<uid>.sock`) |

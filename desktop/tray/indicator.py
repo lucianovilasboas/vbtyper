@@ -72,7 +72,7 @@ BAR_BOTTOM = (0.38, 0.13, 0.86)
 # Altura da barra de nível, como fração da altura do painel.
 BAR_RATIO = 0.30
 SHAPES = ("bar", "wave")
-PHASES = ("recording", "processing", "inserted", "error")
+PHASES = ("recording", "processing", "inserted", "error", "profile")
 WAVE_GRADIENT_STOPS = (
     (0.0, (155 / 255, 0 / 255, 47 / 255)),
     (0.12, (209 / 255, 27 / 255, 27 / 255)),
@@ -285,6 +285,7 @@ class Indicator:
         self.level = 0
         self.waveform: tuple[int, ...] = ()
         self.job_phase = ""
+        self.message = ""
         self._alpha = 1.0
         self.box: tuple[int, int, int, int] | None = None
         self.position: tuple[int, int] | None = None
@@ -354,6 +355,7 @@ class Indicator:
         self.level = int(state.get("level") or 0)
         self.waveform = waveform_from_state(state.get("waveform"))
         self.job_phase = str(state.get("job_phase") or "")
+        self.message = str(state.get("message") or "")
         box = state.get("indicator")
         self.box = None
         if isinstance(box, dict):
@@ -462,6 +464,8 @@ class Indicator:
             self._draw_spinner(cr, width, height)
         elif self.phase == "inserted":
             self._draw_check(cr, width, height)
+        elif self.phase == "profile":
+            self._draw_centered_text(cr, width, height, self.message)
         else:
             self._draw_warning(cr, width, height)
         return False
@@ -588,9 +592,14 @@ class Indicator:
 
     def _draw_phase_text(self, cr, width, height) -> None:
         """Frase minúscula da fase, centralizada sobre o anel do spinner."""
+        self._draw_centered_text(cr, width, height, processing_label(self.job_phase))
+
+    def _draw_centered_text(self, cr, width, height, text: str) -> None:
+        """Texto centralizado, contornado para ficar legível em qualquer fundo."""
         import cairo
 
-        text = processing_label(self.job_phase)
+        if not text:
+            return
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         size = max(6.5, min(9.0, height * 0.17))
         cr.set_font_size(size)

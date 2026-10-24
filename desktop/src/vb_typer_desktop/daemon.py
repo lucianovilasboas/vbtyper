@@ -21,6 +21,13 @@ from vb_typer_desktop.hotkey import HotkeyState
 from vb_typer_desktop.notify import notify as default_notify
 from vb_typer_desktop.platform import Platform, get_platform
 from vb_typer_desktop.preferences import Preferences
+from vb_typer_desktop.profile_switch import (
+    DEFAULT_HOTKEYS,
+    PROFILE_DEFAULT,
+    STEPS,
+    bindings,
+    next_profile,
+)
 from vb_typer_desktop.ui import open_ui
 
 POLL_INTERVAL_S = 0.3
@@ -28,6 +35,8 @@ JOB_TIMEOUT_S = 180.0
 # De quanto em quanto tempo relemos a configuração, para a bandeja ficar em
 # sincronia com o que for mudado na interface.
 OPTIONS_REFRESH_S = 10.0
+# Quanto tempo a pílula do perfil fica no indicador depois do atalho.
+PROFILE_FLASH_S = 1.2
 MODES = ("literal", "smart")
 INSERTED_FLASH_S = 1.2
 ERROR_FLASH_S = 3.0
@@ -66,6 +75,11 @@ class Daemon:
         self.mode = mode
         self.mode_current = ""
         self.profile_current = ""
+        # Troca temporária por atalho: não altera o padrão do backend.
+        self.profile_override = ""
+        self.hotkeys: dict[str, str] = dict(DEFAULT_HOTKEYS)
+        self.combo_watcher = None
+        self._combo_warned = ""
         self.profiles: list[dict] = []
         self.job_phase = ""
         self.state = HotkeyState()
@@ -95,8 +109,8 @@ class Daemon:
 
     @property
     def current_profile(self) -> str:
-        """Perfil de texto vigente; vazio enquanto a configuração não foi lida."""
-        return self.profile_current
+        """Perfil que o próximo ditado vai usar (a troca por atalho manda)."""
+        return self.profile_override or self.profile_current
 
     @property
     def listening(self) -> bool:
@@ -177,7 +191,7 @@ class Daemon:
             get_waveform = getattr(self.recorder, "waveform", None)
             if callable(get_waveform):
                 snapshot["waveform"] = get_waveform()
-        if phase in ("inserted", "error") and self._flash_message:
+        if phase in ("inserted", "error", "profile") and self._flash_message:
             snapshot["message"] = self._flash_message
         box = self._indicator_box(phase)
         if box is not None:
@@ -210,10 +224,12 @@ class Daemon:
         self.state = HotkeyState()
         self.watcher = self.platform.hotkey_watcher(self.on_modifier)
         self.watcher.start()
+        self._start_combo_watcher()
         self._start_options_watcher()
         self._notify(
             "VB Typer ativo",
-            "Segure Ctrl+Super para gravar; solte Ctrl ou Super para transcrever e inserir.",
+            "Segure Ctrl+Super para gravar; solte Ctrl ou Super para transcrever e inserir. "
+            "Os atalhos de perfil estão em Configurações › Atalhos.",
         )
 
     def _start_options_watcher(self) -> None:
@@ -230,13 +246,17 @@ class Daemon:
             self.done.wait(OPTIONS_REFRESH_S)
 
     def refresh_options(self) -> None:
-        """Relê modelo, idioma, modo e perfis (a bandeja acompanha sem reiniciar).
+        """Relê modelo, idioma, perfil e atalhos (a bandeja acompanha sem reiniciar).
 
         Uma falha da API mantém o que já estava em uso — inclusive a lista de
         perfis, para o menu da bandeja não esvaziar enquanto o servidor volta.
         """
-        model, language, mode, profile = self.api.current_options()
+        payload = self.api.settings_or_empty()
         profiles = self.api.list_profiles()
+        model = str(payload.get("model") or "")
+        language = str(payload.get("language") or "")
+        mode = str(payload.get("mode") or "")
+        profile = str(payload.get("default_profile") or "")
         if model:
             self.model = model
         if language:
@@ -251,6 +271,9 @@ class Daemon:
                 profile = "literal" if "literal" in slugs else ""
         if profile:
             self.profile_current = profile
+        hotkeys = payload.get("hotkeys")
+        if isinstance(hotkeys, dict) and hotkeys:
+            self._apply_hotkeys({str(key): str(value) for key, value in hotkeys.items()})
 
     def set_mode(self, value: str) -> bool:
         """Troca o modo de transcrição no backend (é ele que guarda a escolha)."""
@@ -279,10 +302,95 @@ class Daemon:
             self._notify("VB Typer — erro", str(exc), "critical")
             return False
         self.profile_current = str(payload.get("default_profile") or slug)
+        # Escolha explícita (bandeja): o ciclo temporário perde a razão de ser.
+        self.profile_override = ""
         mode = str(payload.get("mode") or "")
         if mode:
             self.mode_current = mode
         return True
+
+    # -------------------------------------------------------- atalhos de perfil
+
+    def profile_name(self, slug: str) -> str:
+        for item in self.profiles:
+            if item.get("slug") == slug:
+                return str(item.get("name") or slug)
+        return slug
+
+    def cycle_profile(self, step: int = 1) -> bool:
+        """Passa para o próximo perfil sem mexer no padrão gravado no backend."""
+        if not step:
+            return False
+        with self.lock:
+            if self.recorder is not None or self.busy:
+                return False
+            slugs = [str(item.get("slug") or "") for item in self.profiles]
+            slugs = [slug for slug in slugs if slug]
+            if not slugs:
+                return False
+            base = self.profile_override or self.profile_current or slugs[0]
+            self.profile_override = next_profile(slugs, base, step)
+            position = slugs.index(self.profile_override) + 1
+            name = self.profile_name(self.profile_override)
+            self._flash("profile", f"{name} ({position}/{len(slugs)})", PROFILE_FLASH_S)
+        return True
+
+    def reset_profile(self) -> bool:
+        """Volta ao perfil padrão configurado, descartando o ciclo."""
+        with self.lock:
+            if self.recorder is not None or self.busy:
+                return False
+            name = self.profile_name(self.profile_current) if self.profile_current else "padrão"
+            self.profile_override = ""
+            self._flash("profile", f"{name} (padrão)", PROFILE_FLASH_S)
+        return True
+
+    def on_combo(self, action: str) -> None:
+        """Chamado pelo observador de combinações, na thread dele."""
+        if action == PROFILE_DEFAULT:
+            self.reset_profile()
+        else:
+            self.cycle_profile(STEPS.get(action, 0))
+
+    def _apply_hotkeys(self, hotkeys: dict[str, str]) -> None:
+        """Adota as combinações da interface; se mudaram, re-arma o grab."""
+        if bindings(hotkeys) == bindings(self.hotkeys):
+            return
+        self.hotkeys = dict(hotkeys)
+        self._restart_combo_watcher()
+
+    def _start_combo_watcher(self) -> None:
+        factory = getattr(self.platform, "combo_watcher", None)
+        parsed = bindings(self.hotkeys)
+        if factory is None or not parsed:
+            return
+        try:
+            watcher = factory(parsed, self.on_combo, self._combo_failed)
+        except Exception as exc:  # plataforma sem a capacidade, por exemplo
+            self._combo_failed(str(exc))
+            return
+        self.combo_watcher = watcher
+        watcher.start()
+
+    def _restart_combo_watcher(self) -> None:
+        watcher = self.combo_watcher
+        self.combo_watcher = None
+        # Parar fora do lock: o callback do observador toma o mesmo lock.
+        if watcher is not None:
+            watcher.stop()
+        if self.listening:
+            self._start_combo_watcher()
+
+    def _combo_failed(self, message: str) -> None:
+        """Avisa uma vez: um atalho ocupado não pode virar enxurrada de erros."""
+        if self._combo_warned == message:
+            return
+        self._combo_warned = message
+        self._notify(
+            "VB Typer — atalhos",
+            f"Troca de perfil por atalho indisponível: {message}.",
+            "critical",
+        )
 
     def stop_listener(self) -> None:
         """Pausa o ditado: cancela o trabalho em curso e descarta o áudio local."""
@@ -293,6 +401,8 @@ class Daemon:
             self._cancel_timer()
             watcher = self.watcher
             self.watcher = None
+            combos = self.combo_watcher
+            self.combo_watcher = None
             recorder = self.recorder
             if recorder is not None:
                 self.recorder = None
@@ -302,9 +412,11 @@ class Daemon:
                 )
                 # Guardado em `self.worker` para o encerramento esperar a captura terminar.
                 self.worker = worker
-        # Nunca parar o observador sob o lock: o callback dele toma o mesmo lock.
+        # Nunca parar os observadores sob o lock: os callbacks deles tomam o mesmo lock.
         if watcher is not None:
             watcher.stop()
+        if combos is not None:
+            combos.stop()
         if worker is not None:
             worker.start()
         self._notify("VB Typer", "Ditado pausado; trabalho cancelado.")
@@ -408,7 +520,7 @@ class Daemon:
         return (
             model or self.model or None,
             language or self.language or "pt",
-            profile or self.profile_current or "",
+            self.profile_override or profile or self.profile_current or "",
         )
 
     def _submit(self, path) -> Job:

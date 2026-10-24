@@ -704,6 +704,7 @@ async function loadSettings() {
   renderQuickSettings();
   renderSmartModelSelects();
   renderKeyBadge(settings.api_key_configured);
+  renderHotkeys();
 }
 
 function renderKeyBadge(configured) {
@@ -713,6 +714,137 @@ function renderKeyBadge(configured) {
   $("key-state").textContent = configured
     ? ""
     : "Nenhuma chave OpenAI configurada. Rode `vb-typer-api --setup` ou salve pelo app desktop.";
+}
+
+// --- atalhos do cliente desktop ---------------------------------------------
+
+const HOTKEY_NAMES = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", super: "Super" };
+const HOTKEY_KEYS = {
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+  Backspace: "⌫",
+  PageUp: "PgUp",
+  PageDown: "PgDn",
+  Backquote: "`",
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Space: "Espaço",
+};
+// Teclas (fora letras, dígitos e F1–F12) aceitas pelo backend.
+const HOTKEY_CODES = new Set([
+  "Tab", "Space", "Enter", "Backspace", "Delete", "Insert", "Home", "End",
+  "PageUp", "PageDown", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Backquote", "Minus", "Equal", "BracketLeft", "BracketRight", "Backslash",
+  "Semicolon", "Quote", "Comma", "Period", "Slash",
+]);
+
+let capturingHotkey = "";
+
+/** Nome canônico da tecla a partir do código físico (não depende do layout). */
+function hotkeyKeyName(code) {
+  if (/^Key[A-Z]$/.test(code || "")) return code.slice(3);
+  if (/^Digit[0-9]$/.test(code || "")) return code.slice(5);
+  if (/^F([1-9]|1[0-2])$/.test(code || "")) return code;
+  return HOTKEY_CODES.has(code) ? code : "";
+}
+
+function hotkeyDefaults() {
+  return (
+    state.settings.default_hotkeys || {
+      profile_next: "ctrl+alt+Tab",
+      profile_previous: "ctrl+alt+shift+Tab",
+      profile_default: "ctrl+alt+0",
+    }
+  );
+}
+
+function hotkeyPartLabel(part) {
+  return HOTKEY_NAMES[part] || HOTKEY_KEYS[part] || part;
+}
+
+function renderHotkeys() {
+  const hotkeys = state.settings.hotkeys || hotkeyDefaults();
+  for (const button of document.querySelectorAll("[data-hotkey]")) {
+    const action = button.dataset.hotkey;
+    const capturing = capturingHotkey === action;
+    button.classList.toggle("capturing", capturing);
+    button.replaceChildren();
+    if (capturing) {
+      button.textContent = "Aperte a combinação…";
+      continue;
+    }
+    const parts = String(hotkeys[action] || "").split("+").filter(Boolean);
+    parts.forEach((part, index) => {
+      if (index > 0) {
+        const plus = document.createElement("span");
+        plus.className = "muted";
+        plus.textContent = "+";
+        button.append(plus);
+      }
+      const chip = document.createElement("span");
+      chip.className = "key";
+      chip.textContent = hotkeyPartLabel(part);
+      button.append(chip);
+    });
+  }
+}
+
+/** null = tecla fora da lista (modificador, por exemplo): segue esperando. */
+function comboFromEvent(event) {
+  const key = hotkeyKeyName(event.code);
+  if (!key) return null;
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push("ctrl");
+  if (event.altKey) modifiers.push("alt");
+  if (event.shiftKey) modifiers.push("shift");
+  if (event.metaKey) modifiers.push("super");
+  return modifiers.length ? [...modifiers, key].join("+") : "";
+}
+
+function endHotkeyCapture() {
+  if (!capturingHotkey) return;
+  capturingHotkey = "";
+  document.removeEventListener("keydown", onHotkeyCapture, true);
+  renderHotkeys();
+}
+
+async function onHotkeyCapture(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    endHotkeyCapture();
+    return;
+  }
+  const combo = comboFromEvent(event);
+  if (combo === null) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!combo) {
+    setStatus("Use pelo menos Ctrl, Alt, Shift ou Super na combinação.", "error");
+    return;
+  }
+  const action = capturingHotkey;
+  const hotkeys = { ...(state.settings.hotkeys || hotkeyDefaults()), [action]: combo };
+  endHotkeyCapture();
+  await saveSetting({ hotkeys });
+  renderHotkeys();
+}
+
+function beginHotkeyCapture(action) {
+  endHotkeyCapture();
+  capturingHotkey = action;
+  renderHotkeys();
+  document.addEventListener("keydown", onHotkeyCapture, true);
 }
 
 async function saveSetting(changes) {
@@ -1668,6 +1800,23 @@ function bindEvents() {
     state.loaded.delete("activity");
   });
   $("test-connection").addEventListener("click", testConnection);
+
+  for (const button of document.querySelectorAll("[data-hotkey]")) {
+    button.addEventListener("click", () => beginHotkeyCapture(button.dataset.hotkey));
+  }
+  $("hotkeys-restore").addEventListener("click", async () => {
+    await saveSetting({ hotkeys: hotkeyDefaults() });
+    renderHotkeys();
+  });
+  // Clicar fora do campo cancela a captura e evita engolir a próxima tecla.
+  // O caminho do evento é lido antes de qualquer re-render: os chips do campo
+  // são recriados no clique e o alvo já estaria fora do documento.
+  document.addEventListener("click", (event) => {
+    if (!capturingHotkey) return;
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    if (path.some((node) => node instanceof HTMLElement && node.dataset.hotkey)) return;
+    endHotkeyCapture();
+  });
 
   for (const item of document.querySelectorAll(".side-item")) {
     item.addEventListener("click", () => {

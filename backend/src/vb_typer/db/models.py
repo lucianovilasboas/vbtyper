@@ -82,6 +82,8 @@ class AppSetting(Base):
     # Modelo de texto (segunda etapa). O ambiente define só o valor inicial.
     smart_model: Mapped[str] = mapped_column(String(64), nullable=False, default="gpt-4o-mini")
     week_start: Mapped[str] = mapped_column(String(16), nullable=False, default="monday")
+    # Atalhos do cliente desktop ({"profile_next": "ctrl+alt+Tab", ...}).
+    hotkeys: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     updated_at: Mapped[str] = mapped_column(String(19), nullable=False)
 
 

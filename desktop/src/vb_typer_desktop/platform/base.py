@@ -8,6 +8,9 @@ from typing import Protocol
 
 from vb_typer_desktop.geometry import Rect
 
+# Combinação já separada: (("ctrl", "alt"), "Tab").
+HotkeyBindings = dict[str, tuple[tuple[str, ...], str]]
+
 
 class HotkeyWatcher(Protocol):
     """Observador do atalho global; precisa parar de forma determinística."""
@@ -23,8 +26,27 @@ class HotkeyWatcher(Protocol):
         """Para de observar; ao retornar, nenhum evento novo é entregue."""
 
 
+class ComboWatcher(Protocol):
+    """Combinações de perfil; capacidade opcional de cada sistema."""
+
+    @property
+    def running(self) -> bool:
+        """Indica se o observador está ativo."""
+
+    def start(self) -> None:
+        """Registra as combinações."""
+
+    def stop(self) -> None:
+        """Libera as combinações; idempotente."""
+
+
 class Platform(Protocol):
-    """Integrações locais que cada sistema operacional implementa."""
+    """Integrações locais que cada sistema operacional implementa.
+
+    ``combo_watcher(bindings, on_action, on_error)`` é **opcional**: quem ainda
+    não portou a troca de perfil por atalho simplesmente não o implementa, e o
+    daemon mantém o ditado funcionando sem ela.
+    """
 
     name: str
 

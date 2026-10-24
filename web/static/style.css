@@ -286,6 +286,23 @@ details.raw p { margin: 6px 0 0; }
 .key { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 7px; padding: 3px 9px; background: var(--panel-2); font-size: 0.8rem; font-weight: 600; }
 select.key { padding: 3px 6px; color: var(--ink); }
 
+/* Campo de captura de atalho: parece um botão, vira "aperte a combinação". */
+.hotkey-capture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 170px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.hotkey-capture:hover { border-color: var(--accent); color: var(--ink); }
+.hotkey-capture.capturing { border-style: solid; border-color: var(--accent); color: var(--accent); }
+
 /* Select de perfil na aba Ditar: nativo e óbvio, não um chip. */
 .quick-select {
   border: 1px solid var(--line);

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import sys
 
-from vb_typer_desktop.platform.base import HotkeyWatcher, Platform
+from vb_typer_desktop.platform.base import ComboWatcher, HotkeyWatcher, Platform
 
-__all__ = ["HotkeyWatcher", "Platform", "get_platform"]
+__all__ = ["ComboWatcher", "HotkeyWatcher", "Platform", "get_platform"]
 
 
 def get_platform() -> Platform:

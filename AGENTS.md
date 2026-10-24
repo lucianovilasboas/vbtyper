@@ -131,6 +131,15 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     mão — rode o gerador. Depois de mexer em `web/`, reinicie o serviço: o
     backend lê `index.html` uma vez, no start.
 
+18. A troca de perfil por atalho é **temporária**: o daemon guarda o perfil do
+    próximo ditado em memória (`profile_override`) e só a bandeja ou a interface
+    mudam o `default_profile` do backend. As combinações vêm das configurações do
+    backend (`app_settings.hotkeys`), são editáveis em **Configurações › Atalhos** e
+    o cliente as aplica em até 10 s, sem reiniciar. No Linux elas são **capturadas**
+    com `XGrabKey` (o aplicativo não as vê; sem o grab, `Ctrl+Alt+Tab` trocaria de
+    aba); o atalho de gravar (Ctrl+Super) continua só observado, sem grab. A
+    gramática é validada no backend (`domain/hotkeys.py`) e recusa Ctrl+Super juntos.
+
 ## Testes
 
 - Use o cliente ASGI (`httpx.ASGITransport` + `LifespanManager`), nunca o
