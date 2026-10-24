@@ -146,3 +146,114 @@ async def test_settings_rejects_an_unknown_mode(client, auth):
     response = await client.patch("/api/v1/settings", headers=auth, json={"mode": "esperto"})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_mode"
+
+
+# --------------------------------------------------------- ditado contínuo
+
+
+async def _profile(client, auth, *, name: str, continuous: bool) -> str:
+    options = {"continuo": True} if continuous else {}
+    response = await client.post(
+        "/api/v1/profiles",
+        headers=auth,
+        json={
+            "name": name,
+            "instructions": "Organize a fala em um parágrafo único, sem inventar nada.",
+            "options": options,
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+    return response.json()["slug"]
+
+
+def _chat_body(respx_mock) -> dict:
+    return json.loads(
+        [call for call in respx_mock.calls if "chat/completions" in str(call.request.url)][
+            -1
+        ].request.content
+    )
+
+
+async def test_continuity_sends_the_previous_dictation_as_context(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    slug = await _profile(client, auth, name="Fluxo", continuous=True)
+    container.history.record(
+        text="primeira parte do raciocínio",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    respx_mock.post(AUDIO).mock(return_value=httpx.Response(200, json={"text": FALADO}))
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": AJUSTADO}}]})
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = slug
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    messages = _chat_body(respx_mock)["messages"]
+    assert "primeira parte do raciocínio" in messages[1]["content"]
+    assert "[DITADOS ANTERIORES" in messages[1]["content"]
+    assert "[NOVO DITADO" in messages[1]["content"]
+    # O contexto entra nas regras do sistema, avisando que ele não é fonte.
+    assert "só para continuidade" in messages[0]["content"]
+    assert job["result"]["continuity_count"] == 1
+
+
+async def test_without_the_flag_the_prompt_has_no_context(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    slug = await _profile(client, auth, name="Sem memória", continuous=False)
+    container.history.record(
+        text="primeira parte do raciocínio",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    respx_mock.post(AUDIO).mock(return_value=httpx.Response(200, json={"text": FALADO}))
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": AJUSTADO}}]})
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = slug
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    body = _chat_body(respx_mock)
+    assert "DITADOS ANTERIORES" not in body["messages"][1]["content"]
+    assert body["messages"][1]["content"] == FALADO
+    assert job["result"]["continuity_count"] == 0
+
+
+async def test_continuity_runs_the_adjustment_even_when_the_text_is_clean(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Com contexto, o atalho do "revisado" não pode pular a segunda chamada."""
+    await client.patch(
+        "/api/v1/profiles/revisado", headers=auth, json={"options": {"continuo": True}}
+    )
+    container.history.record(
+        text="primeira parte",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    respx_mock.post(AUDIO).mock(
+        return_value=httpx.Response(200, json={"text": "texto comum sem nada a converter"})
+    )
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": AJUSTADO}}]})
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = "revisado"
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    chat_calls = [call for call in respx_mock.calls if "chat/completions" in str(call.request.url)]
+    assert chat_calls, "a continuidade deve forçar a segunda chamada"
+    assert job["result"]["continuity_count"] == 1

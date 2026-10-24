@@ -30,6 +30,8 @@ class Transcription(Base):
     profile: Mapped[str] = mapped_column(String(40), nullable=False, default="literal")
     raw_text: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
+    # Quantos ditados anteriores entraram como contexto de continuidade.
+    continuity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Rastreabilidade da importação do app 1.x (idempotência).
     legacy_source: Mapped[str | None] = mapped_column(String(255))

@@ -67,6 +67,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         container.settings,
         container.profiles,
         container.settings_service,
+        container.continuity,
     )
     app.state.manager = manager
     await manager.start()

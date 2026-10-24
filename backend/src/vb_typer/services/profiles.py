@@ -55,6 +55,9 @@ def _clean_options(options: dict[str, Any] | None, allowed_models: tuple[str, ..
         cleaned["concisao"] = concision
     if options.get("preservar_termos") is True:
         cleaned["preservar_termos"] = True
+    # Ditado contínuo: usa os ditados anteriores como contexto da segunda chamada.
+    if options.get("continuo") is True:
+        cleaned["continuo"] = True
 
     raw_items = options.get("items")
     if isinstance(raw_items, list):

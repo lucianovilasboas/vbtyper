@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import dataclass
 
 from vb_typer.adapters.openai import OpenAIAdapter
 from vb_typer.core.config import AppSettings
@@ -21,12 +22,25 @@ from vb_typer.domain.profiles import (
     is_literal,
     is_pristine,
 )
+from vb_typer.services.continuity import ContinuityService
 from vb_typer.services.normalize import needs_normalization
 from vb_typer.services.profiles import ProfileService
 from vb_typer.services.settings import SettingsService
 from vb_typer.services.transcription import JobContext, TranscriptionService
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AppliedProfile:
+    """Resultado da segunda chamada (ou do atalho que a dispensou)."""
+
+    text: str
+    mode: str
+    usage: dict | None
+    profile: str
+    # Quantos ditados entraram como contexto de continuidade (0 = nenhum).
+    continuity: int = 0
 
 
 class JobManager:
@@ -37,12 +51,14 @@ class JobManager:
         settings: AppSettings,
         profiles: ProfileService,
         settings_service: SettingsService,
+        continuity: ContinuityService | None = None,
     ) -> None:
         self.service = service
         self.openai = openai
         self.settings = settings
         self.profiles = profiles
         self.settings_service = settings_service
+        self.continuity = continuity or ContinuityService(self.service.session_factory)
         self.queue: asyncio.Queue[str] = asyncio.Queue()
         self.workers: list[asyncio.Task] = []
         self.running: dict[str, asyncio.Task] = {}
@@ -74,31 +90,42 @@ class JobManager:
 
     async def _apply_profile(
         self, text: str, context: JobContext, profile, api_key: str, model: str
-    ) -> tuple[str, str, dict | None, str]:
-        """Aplica o perfil do job; devolve ``(texto, modo, usage, perfil entregue)``.
+    ) -> AppliedProfile:
+        """Aplica o perfil do job, com a memória dos ditados anteriores se ele pedir.
 
         Falha no perfil **não** perde o ditado: devolve o texto literal e registra
         o motivo no log. Nesse caso o perfil entregue é ``literal`` — é o que o
         histórico passa a mostrar, para o usuário saber que não foi transformado.
         """
         if is_literal(profile.slug):
-            return text, TranscriptionMode.LITERAL, None, LITERAL_SLUG
+            return AppliedProfile(text, TranscriptionMode.LITERAL, None, LITERAL_SLUG)
+
+        continuity = ContinuityService.accepts(profile)
+        gathered = await asyncio.to_thread(self.continuity.context_for) if continuity else None
+        context_text = gathered.text if gathered is not None else ""
         # O filtro conservador só vale para o "Texto revisado" **de fábrica**: se
-        # o usuário editou o prompt, o ajuste sempre roda.
-        if profile.slug == REVISED_SLUG and not needs_normalization(text) and is_pristine(profile):
-            return text, TranscriptionMode.SMART, None, profile.slug
+        # o usuário editou o prompt, ou pediu continuidade, o ajuste sempre roda.
+        if (
+            profile.slug == REVISED_SLUG
+            and not context_text
+            and not needs_normalization(text)
+            and is_pristine(profile)
+        ):
+            return AppliedProfile(text, TranscriptionMode.SMART, None, profile.slug)
         await asyncio.to_thread(self.service.set_phase, context.id, "rendering")
         try:
             adjusted, usage = await self.openai.normalize(
                 text=text,
                 model=model,
-                instructions=compose_instructions(profile),
+                instructions=compose_instructions(profile, continuity=bool(context_text)),
                 api_key=api_key,
+                context=context_text or None,
             )
         except DomainError as exc:
             logger.warning("Perfil %s falhou (job %s): %s", profile.slug, context.id, exc)
-            return text, TranscriptionMode.LITERAL, None, LITERAL_SLUG
-        return adjusted or text, TranscriptionMode.SMART, usage, profile.slug
+            return AppliedProfile(text, TranscriptionMode.LITERAL, None, LITERAL_SLUG)
+        count = gathered.count if gathered is not None else 0
+        return AppliedProfile(adjusted or text, TranscriptionMode.SMART, usage, profile.slug, count)
 
     async def cancel(self, job_id: str) -> None:
         await asyncio.to_thread(self.service.request_cancel, job_id)
@@ -151,18 +178,17 @@ class JobManager:
                 raise ProviderError("A API não reconheceu fala nesse áudio.")
             # O perfil pode fixar o modelo; senão vale o padrão das configurações.
             model = profile.model or await asyncio.to_thread(self.settings_service.smart_model_now)
-            text, mode, usage, delivered = await self._apply_profile(
-                text, context, profile, api_key, model
-            )
+            applied = await self._apply_profile(text, context, profile, api_key, model)
             await asyncio.to_thread(
                 self.service.finish_success,
                 job_id,
-                text=text,
+                text=applied.text,
                 raw_text=(result.get("text") or "").strip(),
-                mode=mode,
-                profile=delivered,
-                usage=usage,
+                mode=applied.mode,
+                profile=applied.profile,
+                usage=applied.usage,
                 text_model=model,
+                continuity_count=applied.continuity,
                 duration_s=context.duration_s,
                 transcribe_ms=transcribe_ms,
             )

@@ -41,6 +41,42 @@ FORMAT_HINT = (
     "(18/10/2025, R$ 50,20, 30%, 15h30, CPF)."
 )
 
+# Memória curta entre ditados: quando o perfil pede, os ditados anteriores viram
+# contexto da segunda chamada para o texto continuar o raciocínio.
+CONTINUITY_WINDOW_MINUTES = 45
+CONTINUITY_MAX_ITEMS = 3
+CONTINUITY_MAX_CHARS = 3000
+# Abaixo disto não vale a pena cortar o ditado mais antigo: entra inteiro ou sai.
+CONTINUITY_MIN_CHUNK = 200
+
+CONTEXT_HEADER = "[DITADOS ANTERIORES — contexto, não reescreva]"
+CONTEXT_FOOTER = "[FIM DOS DITADOS ANTERIORES]"
+NEW_DICTATION_HEADER = "[NOVO DITADO — escreva apenas este trecho]"
+
+# Regras que só entram quando há contexto; as de BASE_RULES continuam valendo
+# para o novo trecho (o contexto não é fonte de conteúdo).
+CONTINUITY_RULES = """\
+As regras acima valem para o NOVO trecho. Antes dele vem um bloco com ditados
+anteriores da mesma pessoa: ele serve só para continuidade.
+- Não reescreva, não repita e não resuma o que já foi ditado.
+- Mantenha o fio do raciocínio: nomes, termos, decisões e referências já citados
+  continuam valendo.
+- Responda apenas com o texto do novo trecho, começando onde o anterior parou;
+  se ele terminou no meio da frase, comece em minúscula e sem repetir o começo.
+- Se o novo trecho não tiver relação com o anterior, ignore o contexto.
+"""
+
+
+def compose_user_content(text: str, context: str | None = None) -> str:
+    """Conteúdo do usuário: só o ditado, ou contexto + ditado com marcadores.
+
+    Os marcadores deixam claro para o modelo o que ele deve escrever e o que
+    existe apenas para dar continuidade — o texto anterior nunca é reescrito.
+    """
+    if not context:
+        return text
+    return f"{CONTEXT_HEADER}\n{context}\n{CONTEXT_FOOTER}\n\n{NEW_DICTATION_HEADER}\n{text}"
+
 
 @dataclass(frozen=True)
 class ProfileSpec:
@@ -223,9 +259,16 @@ TOM_LABEL = {"formal": "formal", "neutro": "neutro", "informal": "informal"}
 CONCISION_LABEL = {"curto": "curta", "normal": "normal", "detalhado": "detalhada"}
 
 
-def compose_instructions(profile: ProfileSpec) -> str:
-    """Regras comuns + o que o perfil faz + itens do usuário + estilo."""
-    parts = [BASE_RULES.strip(), profile.instructions.strip()]
+def compose_instructions(profile: ProfileSpec, *, continuity: bool = False) -> str:
+    """Regras comuns + o que o perfil faz + itens do usuário + estilo.
+
+    Com ``continuity``, entram as regras da memória entre ditados: o contexto
+    anterior nunca é fonte de conteúdo nem deve ser reescrito.
+    """
+    parts = [BASE_RULES.strip()]
+    if continuity:
+        parts.append(CONTINUITY_RULES.strip())
+    parts.append(profile.instructions.strip())
     options = profile.options or {}
 
     items = [str(item).strip() for item in options.get("items") or [] if str(item).strip()]

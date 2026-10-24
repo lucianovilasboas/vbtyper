@@ -27,6 +27,7 @@ def new_transcription(
     insert_ms: int = 0,
     inserted: bool = False,
     error: str | None = None,
+    continuity_count: int = 0,
     created_at: str | None = None,
     legacy_source: str | None = None,
     legacy_id: int | None = None,
@@ -48,6 +49,7 @@ def new_transcription(
         insert_ms=int(insert_ms or 0),
         inserted=bool(inserted),
         error=error,
+        continuity_count=int(continuity_count or 0),
         legacy_source=legacy_source,
         legacy_id=legacy_id,
     )
