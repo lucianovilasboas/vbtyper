@@ -165,13 +165,25 @@ No cliente desktop valem as mesmas regras, mais: use os dublês de
 microfone, conexão X ou rede. A inserção real só se verifica à mão, numa sessão
 X11 com uma janela de texto em foco.
 
-## Git
+## Git — fluxo obrigatório
 
-- Branch `main`; commits no padrão Conventional Commits
-  (`feat(api): ...`, `fix(web): ...`, `test: ...`, `docs: ...`).
-- Commits pequenos e coesos; mensagens em português são aceitas, o prefixo é em
-  inglês.
-- Sem remote configurado ainda. Tags de versão: `v0.1.0`, `v0.2.0`, ...
+1. **Toda alteração nasce em uma branch própria**, criada a partir da `main`:
+   `feat/...`, `fix/...`, `docs/...`, `refactor/...`, `test/...` ou `chore/...`.
+   Vale para funcionalidade, correção, documentação, configuração e qualquer
+   ajuste, por menor que seja. Nunca edite direto na `main`.
+2. Implemente e rode os testes automatizados. Faça commits pequenos e coesos na
+   branch, no padrão Conventional Commits (`feat(api): ...`, `fix(web): ...`),
+   com mensagem em português e prefixo em inglês.
+3. Faça o **merge local** na `main` (`git merge --no-ff`).
+4. **Pare aqui** e avise que a mudança está pronta para os testes manuais.
+5. **Não faça push**, não crie PR, tag nem release sem autorização explícita,
+   depois dos testes manuais.
+6. **Nunca faça deploy** — nem `./deploy.sh`, `docker compose up`, `systemctl
+   restart`, publicação de imagem ou qualquer ação que coloque código em
+   execução. Deploy só em tarefa separada e explicitamente pedida.
+
+Remote: `origin` → https://github.com/lucianovilasboas/vbtyper.git.
+Tags de versão: `v0.1.0`, `v0.2.0`, ...
 
 ## Serviço (systemd de usuário)
 
