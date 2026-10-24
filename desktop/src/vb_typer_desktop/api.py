@@ -44,6 +44,8 @@ class Job:
     error: str | None = None
     transcription_id: int | None = None
     text: str = ""
+    # Sub-fase do job: "transcribing" ou "rendering" (segunda chamada do perfil).
+    phase: str = ""
 
     @property
     def finished(self) -> bool:
@@ -58,6 +60,7 @@ def parse_job(payload: dict) -> Job:
         error=payload.get("error"),
         transcription_id=payload.get("transcription_id"),
         text=str(result.get("text") or ""),
+        phase=str(payload.get("phase") or ""),
     )
 
 

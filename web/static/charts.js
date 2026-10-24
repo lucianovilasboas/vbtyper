@@ -42,7 +42,7 @@ function grid(svg, maximum, format) {
   }
 }
 
-export function renderBars(svg, values, labels, { format = String } = {}) {
+export function renderBars(svg, values, labels, { format = String, highlight = -1 } = {}) {
   const maximum = Math.max(1, ...values);
   grid(svg, maximum, format);
   const slot = (WIDTH - LEFT - RIGHT) / Math.max(1, values.length);
@@ -50,21 +50,40 @@ export function renderBars(svg, values, labels, { format = String } = {}) {
   const ticks = tickIndexes(values.length);
 
   values.forEach((value, index) => {
+    const isNow = index === highlight;
     if (value > 0) {
       const height = Math.max(2, (value / maximum) * PLOT_HEIGHT);
       const x = LEFT + slot * index + (slot - width) / 2;
       const y = TOP + PLOT_HEIGHT - height;
-      const bar = node("rect", { class: "bar", x, y, width, height, rx: 3 });
+      const bar = node("rect", { class: isNow ? "bar now" : "bar", x, y, width, height, rx: 3 });
       const tooltip = node("title");
-      tooltip.textContent = `${labels[index]}: ${format(value)}`;
+      tooltip.textContent = `${labels[index]}: ${format(value)}${isNow ? " · agora" : ""}`;
       bar.append(tooltip);
       svg.append(bar);
+    } else if (isNow) {
+      // Sem atividade ainda: um traço na base mantém "agora" visível.
+      const tick = Math.max(3, Math.min(6, slot * 0.2));
+      svg.append(
+        node("rect", {
+          class: "bar now-tick",
+          x: LEFT + slot * index + (slot - tick) / 2,
+          y: TOP + PLOT_HEIGHT - 5,
+          width: tick,
+          height: 5,
+          rx: 2,
+        })
+      );
     }
     if (ticks.has(index)) svg.append(label(labels[index], LEFT + slot * (index + 0.5), HEIGHT - 8));
   });
 }
 
-export function renderLine(svg, values, labels, { format = String, unit = "" } = {}) {
+export function renderLine(
+  svg,
+  values,
+  labels,
+  { format = String, unit = "", highlight = -1 } = {}
+) {
   const maximum = Math.max(1, ...values);
   grid(svg, maximum, format);
   const slot = (WIDTH - LEFT - RIGHT) / Math.max(1, values.length);
@@ -75,12 +94,18 @@ export function renderLine(svg, values, labels, { format = String, unit = "" } =
     .join(" ");
   svg.append(node("polyline", { class: "line-path", points }));
 
+  if (highlight >= 0 && highlight < values.length) {
+    const x = LEFT + slot * (highlight + 0.5);
+    svg.append(node("line", { class: "now-line", x1: x, y1: TOP, x2: x, y2: TOP + PLOT_HEIGHT }));
+  }
+
   values.forEach((value, index) => {
+    const isNow = index === highlight;
     const x = LEFT + slot * (index + 0.5);
     const y = TOP + PLOT_HEIGHT - (value / maximum) * PLOT_HEIGHT;
-    const dot = node("circle", { class: "line-point", cx: x, cy: y, r: 4 });
+    const dot = node("circle", { class: isNow ? "line-point now" : "line-point", cx: x, cy: y, r: 4 });
     const tooltip = node("title");
-    tooltip.textContent = `${labels[index]}: ${format(value)}${unit}`;
+    tooltip.textContent = `${labels[index]}: ${format(value)}${unit}${isNow ? " · agora" : ""}`;
     dot.append(tooltip);
     svg.append(dot);
     if (ticks.has(index)) svg.append(label(labels[index], x, HEIGHT - 8));
@@ -88,11 +113,11 @@ export function renderLine(svg, values, labels, { format = String, unit = "" } =
 }
 
 /* Mapa de consistência: uma célula por dia, em colunas de semana. */
-export function renderHeatmap(host, cells) {
+export function renderHeatmap(host, cells, { today = "" } = {}) {
   host.replaceChildren();
   for (const cell of cells) {
     const square = document.createElement("i");
-    square.className = "heat";
+    square.className = cell.date === today ? "heat now" : "heat";
     square.dataset.level = String(cell.level);
     square.title = cell.tooltip;
     host.append(square);
@@ -100,12 +125,12 @@ export function renderHeatmap(host, cells) {
 }
 
 /* Uso por dia da semana: colunas com altura proporcional. */
-export function renderWeekdays(host, days) {
+export function renderWeekdays(host, days, { highlight = "" } = {}) {
   const maximum = Math.max(1, ...days.map((day) => day.count));
   host.replaceChildren();
   for (const day of days) {
     const column = document.createElement("div");
-    column.className = "weekday-col";
+    column.className = day.label === highlight ? "weekday-col now" : "weekday-col";
     const bar = document.createElement("i");
     bar.style.setProperty("--h", `${Math.max(2, (day.count / maximum) * 100)}%`);
     bar.title = `${day.label}: ${day.count} ditado(s) · ${day.words} palavra(s)`;

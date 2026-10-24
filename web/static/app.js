@@ -56,6 +56,8 @@ const state = {
   period: { days: 7, granularity: "day" },
   metric: "words",
   series: [],
+  now: null,
+  nowKey: "",
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
   profiles: [],
   profileEditing: null,
@@ -1171,7 +1173,7 @@ function drawVolume() {
     $("volume-chart"),
     values,
     state.series.map((point) => point.label),
-    { format: metricFormat() }
+    { format: metricFormat(), highlight: currentBucketIndex(state.period.granularity) }
   );
 }
 
@@ -1187,7 +1189,11 @@ function drawPace() {
     $("pace-chart"),
     pace,
     state.series.map((point) => point.label),
-    { format: (value) => number.format(Math.round(value)), unit: " palavras/min" }
+    {
+      format: (value) => number.format(Math.round(value)),
+      unit: " palavras/min",
+      highlight: currentBucketIndex(state.period.granularity),
+    }
   );
 }
 
@@ -1197,7 +1203,10 @@ function drawHours(data) {
     $("hours-chart"),
     hours.map((hour) => hour.count),
     hours.map((hour) => hour.label),
-    { format: (value) => `${number.format(value)} ditado${value === 1 ? "" : "s"}` }
+    {
+      format: (value) => `${number.format(value)} ditado${value === 1 ? "" : "s"}`,
+      highlight: nowDate().getHours(),
+    }
   );
   const peak = hours.reduce(
     (top, hour) => (hour.count > top.count ? hour : top),
@@ -1209,16 +1218,17 @@ function drawHours(data) {
 }
 
 /* Últimos 91 dias, alinhados no início da semana, para as colunas fecharem. */
-function heatmapCells(days, weekStart) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
+function heatmapCells(days, weekStart, now) {
+  const end = now ? new Date(now) : new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = new Date(end);
   start.setDate(start.getDate() - (HEATMAP_DAYS - 1));
   const wanted = weekStart === "sunday" ? 0 : 1;
   while (start.getDay() !== wanted) start.setDate(start.getDate() - 1);
 
   const byDate = new Map(days.map((day) => [day.bucket, day]));
   const cells = [];
-  for (const cursor = new Date(start); cursor <= new Date(); cursor.setDate(cursor.getDate() + 1)) {
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
     const key = isoDate(cursor);
     const day = byDate.get(key);
     const count = day ? day.count : 0;
@@ -1237,8 +1247,9 @@ function heatmapCells(days, weekStart) {
 }
 
 function renderConsistency(days, weekStart) {
-  const cells = heatmapCells(days, weekStart);
-  renderHeatmap($("heatmap"), cells);
+  const cells = heatmapCells(days, weekStart, state.now);
+  const today = isoDate(nowDate());
+  renderHeatmap($("heatmap"), cells, { today });
 
   const active = cells.filter((entry) => entry.count > 0).length;
   $("heat-active").textContent = number.format(active);
@@ -1259,7 +1270,9 @@ function renderConsistency(days, weekStart) {
     count: (totals.get(weekday) || { count: 0 }).count,
     words: (totals.get(weekday) || { words: 0 }).words,
   }));
-  renderWeekdays($("weekday-chart"), weekdays);
+  renderWeekdays($("weekday-chart"), weekdays, {
+    highlight: WEEKDAY_SHORT[nowDate().getDay()],
+  });
   const busiest = weekdays.reduce((top, day) => (day.count > top.count ? day : top), weekdays[0]);
   $("weekday-peak").textContent = busiest.count
     ? `mais uso: ${WEEKDAY_LONG[order[weekdays.indexOf(busiest)]]}`
@@ -1298,6 +1311,34 @@ function renderMetrics(data) {
     : "—";
 }
 
+/** "Agora" segundo o servidor (as datas do histórico são do fuso dele). */
+function nowDate() {
+  return state.now ? new Date(state.now) : new Date();
+}
+
+/** Chave do relógio do navegador, só para detectar a virada de hora/dia. */
+function clockKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+}
+
+/** Índice do balde atual na série (hoje ou o mês corrente). */
+function currentBucketIndex(granularity) {
+  const iso = isoDate(nowDate());
+  const key = granularity === "month" ? iso.slice(0, 7) : iso;
+  return state.series.findIndex((point) => point.bucket === key);
+}
+
+function renderNowCaption() {
+  const target = $("now-caption");
+  if (!target) return;
+  const date = nowDate();
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  target.textContent = `agora: ${WEEKDAY_LONG[date.getDay()]}, ${day}/${month} · ${hour}h`;
+}
+
 async function loadActivity() {
   const to = new Date();
   const from = new Date();
@@ -1311,7 +1352,10 @@ async function loadActivity() {
   ]);
 
   state.series = data.series;
+  state.now = data.now;
+  state.nowKey = clockKey();
   $("period-caption").textContent = `nos últimos ${state.period.days} dias`;
+  renderNowCaption();
   renderMetrics(data);
   drawVolume();
   drawPace();
@@ -1372,6 +1416,12 @@ function loadSettingsTab() {
  */
 async function checkNewDictations() {
   if (document.hidden || recorder.recording || state.jobId) return;
+  // Virada de hora/dia: o destaque de "agora" precisa se mover.
+  if (state.view === "activity" && state.nowKey && clockKey() !== state.nowKey) {
+    state.nowKey = clockKey();
+    loadActivity();
+    return;
+  }
 
   let newest;
   try {

@@ -52,7 +52,6 @@ WAVE_GAIN_RELEASE_S = 0.90  # fala baixa: sobe devagar, sem bombear
 # Spinner da fase "transcrevendo": arco girando no lugar da barra que deslizava.
 SPINNER_TURNS_PER_SECOND = 1.1
 SPINNER_ARC = math.pi * 0.55
-SPINNER_RADIUS_RATIO = 0.30
 DEBUG_PATH = os.environ.get("VB_TYPER_INDICATOR_DEBUG")
 
 # A barra de nível usa o roxo de destaque do app (o mesmo `accent` do 1.x).
@@ -228,6 +227,11 @@ def spinner_angle(now: float) -> float:
     return (now * SPINNER_TURNS_PER_SECOND * 2 * math.pi) % (2 * math.pi)
 
 
+def processing_label(job_phase: str) -> str:
+    """Frase da fase de processamento, conforme o que o backend está fazendo."""
+    return "Aplicando perfil…" if job_phase == "rendering" else "Transcrevendo…"
+
+
 def _wave_gradient(cairo, width: float, alpha: float):
     gradient = cairo.LinearGradient(0, 0, width, 0)
     for stop, colour in WAVE_GRADIENT_STOPS:
@@ -280,6 +284,7 @@ class Indicator:
         self.phase = "idle"
         self.level = 0
         self.waveform: tuple[int, ...] = ()
+        self.job_phase = ""
         self._alpha = 1.0
         self.box: tuple[int, int, int, int] | None = None
         self.position: tuple[int, int] | None = None
@@ -348,6 +353,7 @@ class Indicator:
         self.phase = phase_from_state(state)
         self.level = int(state.get("level") or 0)
         self.waveform = waveform_from_state(state.get("waveform"))
+        self.job_phase = str(state.get("job_phase") or "")
         box = state.get("indicator")
         self.box = None
         if isinstance(box, dict):
@@ -557,24 +563,55 @@ class Indicator:
         cr.stroke()
 
     def _draw_spinner(self, cr, width, height) -> None:
-        """Arco circular girando: o "processando" não se confunde com a gravação."""
+        """Anel fino girando na borda, com a fase escrita por cima e discreta."""
         import cairo
 
         centre_x, centre_y = width / 2, height / 2
-        radius = max(6.0, min(width, height) * SPINNER_RADIUS_RATIO)
-        line_width = max(3.0, height * 0.12)
+        radius = max(8.0, min(width, height) / 2 - 3)
+        line_width = max(2.0, height * 0.07)
         cr.set_line_cap(cairo.LINE_CAP_ROUND)
 
         cr.new_path()
         cr.arc(centre_x, centre_y, radius, 0, 2 * math.pi)
-        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.22 * self._alpha)
+        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.10 * self._alpha)
         cr.set_line_width(line_width)
         cr.stroke()
 
         start = spinner_angle(time.monotonic())
         cr.new_path()
         cr.arc(centre_x, centre_y, radius, start, start + SPINNER_ARC)
-        self._stroke(cr, ORANGE, line_width)
+        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.45 * self._alpha)
+        cr.set_line_width(line_width)
+        cr.stroke()
+
+        self._draw_phase_text(cr, width, height)
+
+    def _draw_phase_text(self, cr, width, height) -> None:
+        """Frase minúscula da fase, centralizada sobre o anel do spinner."""
+        import cairo
+
+        text = processing_label(self.job_phase)
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        size = max(6.5, min(9.0, height * 0.17))
+        cr.set_font_size(size)
+        extents = cr.text_extents(text)
+        max_width = width - 8
+        if extents.width > max_width:
+            size = max(6.0, size * max_width / extents.width)
+            cr.set_font_size(size)
+            extents = cr.text_extents(text)
+        x = (width - extents.width) / 2 - extents.x_bearing
+        y = height / 2 - extents.height / 2 - extents.y_bearing
+        # Contorno escuro + preenchimento claro: legível tanto sobre editor
+        # escuro quanto sobre fundo claro, sem precisar de caixa atrás do texto.
+        cr.move_to(x, y)
+        cr.text_path(text)
+        cr.set_line_join(cairo.LINE_JOIN_ROUND)
+        cr.set_line_width(max(1.4, size * 0.26))
+        cr.set_source_rgba(SHADOW[0], SHADOW[1], SHADOW[2], SHADOW[3] * self._alpha)
+        cr.stroke_preserve()
+        cr.set_source_rgba(1.0, 0.96, 0.92, 0.95 * self._alpha)
+        cr.fill()
 
     def _draw_check(self, cr, width, height) -> None:
         cr.move_to(width * 0.38, height * 0.52)

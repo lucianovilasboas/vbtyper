@@ -169,6 +169,15 @@ h1, h2 { margin: 0; font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; 
 .gridline { stroke: var(--line); stroke-width: 1; }
 .axis-label { fill: var(--muted); font-size: 11px; }
 .bar { fill: var(--accent); }
+/* "Agora" na Atividade: hora/dia atuais em verde, contra o roxo dos dados. */
+.bar.now { fill: var(--green); }
+.bar.now-tick { fill: var(--green); opacity: 0.7; }
+.line-point.now { fill: var(--green); stroke: var(--green); stroke-width: 3; }
+.now-line { stroke: var(--green); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0.45; }
+.weekday-col.now i { background: var(--green); }
+.weekday-col.now label { color: var(--green); font-weight: 700; }
+.heat.now { outline: 2px solid var(--green); outline-offset: 1px; }
+.now-caption { color: var(--green); font-weight: 600; }
 .line-path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linejoin: round; }
 .line-point { fill: var(--panel); stroke: var(--accent); stroke-width: 2.5; }
 .no-data-note { margin-top: 8px; color: var(--muted); font-size: 0.8rem; }

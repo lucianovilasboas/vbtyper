@@ -210,9 +210,11 @@ de propor trabalho novo.
 - A fase de gravação do indicador é a **mesma onda da tela Ditar**: linha
   colorida com o gradiente do canvas web, desenhada a partir das amostras reais
   do microfone; sem amostras ainda, um envelope senoidal de repouso. A fase de
-  transcrição é um **arco circular girando** (spinner), não uma barra que desliza
-  — assim as duas fases nunca se confundem. `"shape": "bar"` no `desktop.json`
-  troca a gravação por uma barra de nível ancorada à esquerda.
+  transcrição é um **anel fino girando** na borda do painel, com uma frase
+  minúscula por cima (“Transcrevendo…” ou “Aplicando perfil…”, conforme
+  `jobs.phase`), não uma barra que desliza — assim as duas fases nunca se
+  confundem. `"shape": "bar"` no `desktop.json` troca a gravação por uma barra de
+  nível ancorada à esquerda.
 - A onda do indicador usa **áudio real**: o daemon lê a cauda do WAV em andamento
   (`Recorder.waveform`, 512 quadros) e envia 256 pontos no snapshot apenas quando
   está gravando, o indicador está ligado e o `shape` é `wave`. Como o `arecord`

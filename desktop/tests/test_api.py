@@ -138,6 +138,24 @@ def test_http_error_without_envelope_becomes_api_error():
 
 
 @respx.mock
+def test_get_job_reads_the_processing_phase():
+    respx.get(f"{BASE}/api/v1/transcription-jobs/job-1").mock(
+        return_value=httpx.Response(
+            200, json={"id": "job-1", "status": "running", "phase": "rendering"}
+        )
+    )
+    assert api.ApiClient(token="t").get_job("job-1").phase == "rendering"
+
+
+@respx.mock
+def test_job_without_phase_defaults_to_empty():
+    respx.get(f"{BASE}/api/v1/transcription-jobs/job-1").mock(
+        return_value=httpx.Response(200, json={"id": "job-1", "status": "queued"})
+    )
+    assert api.ApiClient(token="t").get_job("job-1").phase == ""
+
+
+@respx.mock
 def test_network_failure_becomes_api_error():
     respx.get(f"{BASE}/api/v1/ready").mock(side_effect=httpx.ConnectError("recusada"))
     with pytest.raises(api.ApiError, match="Não foi possível falar com a API"):

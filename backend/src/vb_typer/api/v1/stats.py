@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from vb_typer.api.deps import ContainerDep
+from vb_typer.core.timeutil import iso_stamp, local_stamp
 from vb_typer.domain.enums import Granularity
 from vb_typer.domain.errors import DomainError
 from vb_typer.schemas.stats import StatsResponse
@@ -34,6 +35,7 @@ def get_stats(
         {
             "from": start,
             "to": end,
+            "now": iso_stamp(local_stamp()),
             "granularity": granularity,
             "summary": summary,
             "series": series,
