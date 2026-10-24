@@ -129,6 +129,8 @@ def test_phase_comes_from_the_snapshot(indicator):
     assert indicator.phase_from_state({"phase": "error"}) == "error"
     # Pílula do perfil trocado por atalho.
     assert indicator.phase_from_state({"phase": "profile"}) == "profile"
+    # Ditado que só repetia o que já estava escrito: aviso curto, sem inserir.
+    assert indicator.phase_from_state({"phase": "nothing"}) == "nothing"
 
 
 def test_phase_falls_back_for_old_snapshots(indicator):

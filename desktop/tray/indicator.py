@@ -72,7 +72,7 @@ BAR_BOTTOM = (0.38, 0.13, 0.86)
 # Altura da barra de nível, como fração da altura do painel.
 BAR_RATIO = 0.30
 SHAPES = ("bar", "wave")
-PHASES = ("recording", "processing", "inserted", "error", "profile")
+PHASES = ("recording", "processing", "inserted", "error", "profile", "nothing")
 WAVE_GRADIENT_STOPS = (
     (0.0, (155 / 255, 0 / 255, 47 / 255)),
     (0.12, (209 / 255, 27 / 255, 27 / 255)),
@@ -464,7 +464,7 @@ class Indicator:
             self._draw_spinner(cr, width, height)
         elif self.phase == "inserted":
             self._draw_check(cr, width, height)
-        elif self.phase == "profile":
+        elif self.phase in ("profile", "nothing"):
             self._draw_centered_text(cr, width, height, self.message)
         else:
             self._draw_warning(cr, width, height)

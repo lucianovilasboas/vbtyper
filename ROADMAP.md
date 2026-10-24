@@ -3,8 +3,8 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 24/10/2026 — tudo em `v0.17.0` (backend: 162 testes; desktop:
-239 testes).
+Última atualização: 24/10/2026 — tudo em `v0.17.1` (backend: 165 testes; desktop:
+242 testes).
 
 ---
 
@@ -89,6 +89,16 @@ sem repetir o que já está no documento. O contexto serve **só** para continui
 é reescrito nem resumido —, a opção é por perfil (a transcrição fiel ignora, porque não
 tem segunda chamada) e falhar ao montar o contexto nunca derruba o ditado. O histórico
 marca "contínuo" nos ditados que usaram memória (`transcriptions.continuity_count`).
+
+**Continuidade sem repetição (`v0.17.1`).** As regras de continuidade passaram para o
+**fim** do prompt (vencem as do perfil) e dizem explicitamente para descartar a
+reafirmação de ideia, fato ou número já escrito — nomes e termos continuam permitidos
+quando a frase precisa. Se o ditado não acrescentar nada, o modelo responde
+`[nada novo]`: o job conclui sem texto, nada é inserido e o cliente mostra "nada novo"
+(com `text` vazio no histórico, em vez de erro ou de o literal repetido). O prompt foi
+verificado com chamadas reais em quatro cenários (continuação, repetição parcial,
+repetição total e assunto sem relação) — a checagem ficou em
+`scripts/verify-continuity.py` para poder ser repetida.
 
 ### Modelo do texto e itens de perfil: **feito em `v0.13.0`**
 

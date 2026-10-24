@@ -198,8 +198,11 @@ async def test_continuity_sends_the_previous_dictation_as_context(
     assert "primeira parte do raciocínio" in messages[1]["content"]
     assert "[DITADOS ANTERIORES" in messages[1]["content"]
     assert "[NOVO DITADO" in messages[1]["content"]
-    # O contexto entra nas regras do sistema, avisando que ele não é fonte.
-    assert "só para continuidade" in messages[0]["content"]
+    # O contexto entra nas regras do sistema: reafirmação é descartada e as regras
+    # de continuidade vêm por último, valendo sobre as do perfil.
+    system = messages[0]["content"]
+    assert "Descarte do novo trecho" in system
+    assert system.rstrip().endswith("Nunca copie o texto já escrito na resposta.")
     assert job["result"]["continuity_count"] == 1
 
 
@@ -257,3 +260,33 @@ async def test_continuity_runs_the_adjustment_even_when_the_text_is_clean(
     chat_calls = [call for call in respx_mock.calls if "chat/completions" in str(call.request.url)]
     assert chat_calls, "a continuidade deve forçar a segunda chamada"
     assert job["result"]["continuity_count"] == 1
+
+
+async def test_nothing_new_ends_the_job_without_text(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Ditado que só repetia o que já estava escrito: nada é entregue, job conclui."""
+    slug = await _profile(client, auth, name="Fluxo", continuous=True)
+    container.history.record(
+        text="O prazo do relatório é sexta-feira.",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    respx_mock.post(AUDIO).mock(return_value=httpx.Response(200, json={"text": FALADO}))
+    respx_mock.post(CHAT).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "[Nada novo]."}}]}
+        )
+    )
+
+    files, data = _upload(make_wav(1.0))
+    data["profile"] = slug
+    created = (await client.post(ENDPOINT, headers=auth, files=files, data=data)).json()
+    job = await wait_for_job(client, created["id"], auth, {"succeeded"})
+
+    assert job["result"]["text"] == ""
+    assert job["result"]["mode"] == "smart"
+    assert job["result"]["continuity_count"] == 1
+    # O texto cru continua guardado, para auditar o que foi dito.
+    assert job["result"]["raw_text"] == FALADO

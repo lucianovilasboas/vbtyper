@@ -127,14 +127,28 @@ def test_pause_cancels_and_discards_the_capture(tmp_path):
 # ----------------------------------------------------------------- erros do provedor
 
 
-def test_empty_transcription_is_an_error(make_wav, tmp_path):
+def test_empty_result_is_nothing_new_not_an_error(make_wav, tmp_path):
+    """O perfil contínuo devolve vazio quando o ditado só repetia o já escrito."""
     api, platform = FakeApi(text="   "), FakePlatform()
     agent, notifications = build(api=api, platform=platform)
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
 
     assert platform.typed == []
     assert api.inserts == []
-    assert any("não reconheceu fala" in message for message in messages(notifications))
+    assert agent.last_transcript == ""
+    # O indicador mostra "nada novo": é aviso de rotina, não erro.
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "nothing"
+    assert snapshot["message"] == "nada novo"
+
+
+def test_failed_job_with_empty_text_still_reports_the_error(make_wav, tmp_path):
+    api, platform = FakeApi(text="", status="failed", error="Falha no provedor."), FakePlatform()
+    agent, notifications = build(api=api, platform=platform)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert platform.typed == []
+    assert any("Falha no provedor" in message for message in messages(notifications))
 
 
 def test_failed_job_reports_the_provider_error(make_wav, tmp_path):
@@ -721,6 +735,20 @@ def test_platform_without_combo_support_keeps_dictation_working():
     assert agent.listening is True
     assert agent.combo_watcher is None
     agent.stop_listener()
+
+
+def test_nothing_new_is_success_and_types_nothing():
+    """Ditado que só repetia o que já estava escrito: avisa, não insere, não é erro."""
+    api, platform = FakeApi(), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+
+    agent._insert(Job(id="job-1", status="succeeded", text="", transcription_id=42), 7)
+
+    assert platform.typed == []
+    assert api.inserts == []
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "nothing"
+    assert snapshot["message"] == "nada novo"
 
 
 # ------------------------------------------------------------------- onda
