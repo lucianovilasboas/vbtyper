@@ -147,6 +147,17 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     renomeada, mas **não** excluída. `profiles.seeded` marca a origem (badge
     "padrão") e `sort_order` preserva a ordem curada; personalizados vêm por nome.
 
+20. O ditado contínuo é uma opção **do perfil** (`profiles.options.continuo`), não um
+    modo global. Ligada, a segunda chamada recebe os ditados anteriores como contexto
+    (`services/continuity.py`: últimos 3, janela de 45 min, ~3.000 caracteres, só o
+    texto entregue e sem erro). O contexto é **apenas** continuidade: nunca é reescrito,
+    repetido nem resumido, e o novo trecho continua sendo a única fonte de conteúdo; a
+    transcrição fiel não tem segunda chamada e ignora a opção. Falha ao montar o
+    contexto segue sem ele — nunca derruba o ditado. O ditado guarda
+    `transcriptions.continuity_count` para o histórico mostrar quando houve
+    continuidade, e o re-render manual nunca usa contexto (é reprocessamento, não
+    continuação).
+
 ## Testes
 
 - Use o cliente ASGI (`httpx.ASGITransport` + `LifespanManager`), nunca o

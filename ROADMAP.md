@@ -3,7 +3,7 @@
 Pendências combinadas com o Luciano. **Nada aqui está implementado**, exceto o
 que estiver marcado como feito.
 
-Última atualização: 24/10/2026 — tudo em `v0.16.0` (backend: 137 testes; desktop:
+Última atualização: 24/10/2026 — tudo em `v0.17.0` (backend: 162 testes; desktop:
 239 testes).
 
 ---
@@ -81,6 +81,14 @@ As combinações ficam em `app_settings.hotkeys`, editáveis na nova seção
 **Configurações › Atalhos**, com captura pelo teclado e validação no backend (recusa
 Ctrl+Super, que é o atalho de gravar). No X11 o grab (`XGrabKey`) impede que a combinação
 chegue ao aplicativo em foco.
+
+**Ditado contínuo (`v0.17.0`).** Cada perfil pode ser marcado como contínuo: a segunda
+chamada passa a receber os ditados anteriores como contexto (últimos 3, até 45 min,
+~3.000 caracteres, só o texto entregue e sem erro) para o texto continuar o raciocínio
+sem repetir o que já está no documento. O contexto serve **só** para continuidade — não
+é reescrito nem resumido —, a opção é por perfil (a transcrição fiel ignora, porque não
+tem segunda chamada) e falhar ao montar o contexto nunca derruba o ditado. O histórico
+marca "contínuo" nos ditados que usaram memória (`transcriptions.continuity_count`).
 
 ### Modelo do texto e itens de perfil: **feito em `v0.13.0`**
 
