@@ -36,6 +36,8 @@ class TranscriptionRead(ORMModel):
     insert_ms: int
     inserted: bool
     error: str | None = None
+    # Ditados anteriores usados como contexto de continuidade (0 = nenhum).
+    continuity_count: int = 0
     # Só o detalhe preenche as versões; a lista fica leve.
     versions: list[VersionRead] = []
 

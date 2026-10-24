@@ -35,6 +35,18 @@ async def test_list_is_paginated_newest_first(client, auth, container):
     assert [item["id"] for item in body["items"]] == [ids[2], ids[1]]
 
 
+async def test_continuity_count_starts_at_zero(client, auth, container):
+    """Ditado sem memória entre ditados: zero, e o campo sempre existe."""
+    row = container.history.record(
+        text="texto", duration_s=10, model="gpt-4o-mini-transcribe", language="pt"
+    )
+
+    response = await client.get(f"/api/v1/transcriptions/{row.id}", headers=auth)
+
+    assert response.status_code == 200
+    assert response.json()["continuity_count"] == 0
+
+
 async def test_filters_by_inserted_and_search(client, auth, container):
     _seed(container, 3)
     response = await client.get("/api/v1/transcriptions", headers=auth, params={"inserted": False})

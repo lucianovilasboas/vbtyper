@@ -218,3 +218,36 @@ async def test_too_many_items_are_rejected(client, auth):
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "too_many_items"
+
+
+async def test_render_never_uses_the_continuity_context(
+    client, auth, container, with_api_key, respx_mock
+):
+    """Re-render é reprocessamento, não continuação: o contexto não entra."""
+    created = await client.post(
+        "/api/v1/profiles",
+        headers=auth,
+        json={
+            "name": "Fluxo",
+            "instructions": "Una a fala em um parágrafo, mantendo o fio do raciocínio.",
+            "options": {"continuo": True},
+        },
+    )
+    slug = created.json()["slug"]
+    container.history.record(
+        text="ditado anterior que não deve entrar",
+        duration_s=5,
+        model="gpt-4o-mini-transcribe",
+        language="pt",
+    )
+    row = _row(container)
+    respx_mock.post(CHAT).mock(return_value=_chat("texto ajustado"))
+
+    response = await client.post(
+        f"{ENDPOINT}/{row.id}/render", headers=auth, json={"profile": slug}
+    )
+
+    assert response.status_code == 200
+    body = json.loads(respx_mock.calls[-1].request.content)
+    assert "[DITADOS ANTERIORES" not in body["messages"][1]["content"]
+    assert body["messages"][1]["content"] == "texto original"

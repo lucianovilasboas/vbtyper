@@ -7,6 +7,7 @@ import json
 import httpx
 
 from vb_typer.domain.errors import ApiKeyMissingError, ProviderError
+from vb_typer.domain.profiles import compose_user_content
 
 
 class OpenAIAdapter:
@@ -84,9 +85,19 @@ class OpenAIAdapter:
         return {"text": text}
 
     async def normalize(
-        self, *, text: str, model: str, instructions: str, api_key: str
+        self,
+        *,
+        text: str,
+        model: str,
+        instructions: str,
+        api_key: str,
+        context: str | None = None,
     ) -> tuple[str, dict]:
-        """Aplica um perfil a um texto já transcrito; devolve ``(texto, usage)``."""
+        """Aplica um perfil a um texto já transcrito; devolve ``(texto, usage)``.
+
+        ``context`` é o texto dos ditados anteriores (continuação): vai na
+        mensagem do usuário em blocos marcados, nunca como fonte de conteúdo.
+        """
         if not api_key:
             raise ApiKeyMissingError("Chave OpenAI ausente. Configure-a no cofre do sistema.")
         body = {
@@ -94,7 +105,7 @@ class OpenAIAdapter:
             "temperature": 0,
             "messages": [
                 {"role": "system", "content": instructions},
-                {"role": "user", "content": text},
+                {"role": "user", "content": compose_user_content(text, context)},
             ],
         }
         headers = {"Authorization": f"Bearer {api_key}"}

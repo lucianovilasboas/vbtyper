@@ -18,6 +18,7 @@ from vb_typer.core.paths import AppPaths
 from vb_typer.core.security import TOKEN_COOKIE, bearer_token, token_matches
 from vb_typer.db.session import make_engine, make_session_factory
 from vb_typer.domain.errors import UnauthorizedError
+from vb_typer.services.continuity import ContinuityService
 from vb_typer.services.history import HistoryService
 from vb_typer.services.profiles import ProfileService
 from vb_typer.services.renditions import RenditionService
@@ -40,6 +41,7 @@ class Container:
     stats: StatsService
     settings_service: SettingsService
     profiles: ProfileService
+    continuity: ContinuityService
     renditions: RenditionService
     transcription: TranscriptionService
 
@@ -71,6 +73,7 @@ def build_container(settings: AppSettings, paths: AppPaths) -> Container:
         stats=StatsService(session_factory, settings),
         settings_service=settings_service,
         profiles=profiles,
+        continuity=ContinuityService(session_factory),
         renditions=RenditionService(
             session_factory, settings, openai, secrets, history, profiles, settings_service
         ),

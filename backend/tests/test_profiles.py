@@ -157,3 +157,26 @@ async def test_short_instructions_are_rejected(client, auth):
         ENDPOINT, headers=auth, json={"name": "Curto", "instructions": "curto"}
     )
     assert response.status_code == 422
+
+
+async def test_continuous_flag_survives_the_round_trip(client, auth):
+    created = await client.post(
+        ENDPOINT,
+        headers=auth,
+        json={
+            "name": "Fluxo",
+            "instructions": "Una a fala em um parágrafo, mantendo o fio do raciocínio.",
+            "options": {"continuo": True},
+        },
+    )
+    assert created.status_code in (200, 201)
+    slug = created.json()["slug"]
+    assert created.json()["options"]["continuo"] is True
+
+    listed = {item["slug"]: item for item in (await client.get(ENDPOINT, headers=auth)).json()}
+    assert listed[slug]["options"]["continuo"] is True
+
+    # Desligar a flag remove a chave (não grava "continuo": false).
+    updated = await client.patch(f"{ENDPOINT}/{slug}", headers=auth, json={"options": {}})
+    assert updated.status_code == 200
+    assert "continuo" not in updated.json()["options"]

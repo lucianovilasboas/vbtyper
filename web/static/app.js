@@ -910,6 +910,7 @@ function renderProfilesList() {
     if (profile.model) meta.push(profile.model);
     const regras = (profile.options && profile.options.items) || [];
     if (regras.length) meta.push(`${regras.length} regra${regras.length === 1 ? "" : "s"}`);
+    if (profile.options && profile.options.continuo) meta.push("contínuo");
     if (meta.length) {
       const info = document.createElement("span");
       info.className = "muted small";
@@ -989,6 +990,7 @@ const PROFILE_FIELDS = [
   "profile-tone",
   "profile-concision",
   "profile-terms",
+  "profile-continuous",
   "profile-model",
   "profile-item-input",
   "profile-item-add",
@@ -1017,6 +1019,9 @@ function openProfileEditor(profile) {
   $("profile-terms").checked = Boolean(
     profile && profile.options && profile.options.preservar_termos
   );
+  $("profile-continuous").checked = Boolean(
+    profile && profile.options && profile.options.continuo
+  );
   state.profileItems = [...((profile && profile.options && profile.options.items) || [])];
   renderProfileItems();
   $("profile-model").value = (profile && profile.model) || "";
@@ -1036,6 +1041,7 @@ async function saveProfile() {
   if ($("profile-tone").value) options.tom = $("profile-tone").value;
   if ($("profile-concision").value) options.concisao = $("profile-concision").value;
   if ($("profile-terms").checked) options.preservar_termos = true;
+  if ($("profile-continuous").checked) options.continuo = true;
   if (state.profileItems.length) options.items = [...state.profileItems];
   if ($("profile-model").value) options.modelo = $("profile-model").value;
 
@@ -1137,6 +1143,15 @@ function historyRow(item) {
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = "inserido";
+    body.append(badge);
+  }
+  if (item.continuity_count) {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = "contínuo";
+    badge.title = `continuou ${item.continuity_count} ditado${
+      item.continuity_count === 1 ? "" : "s"
+    } anterior${item.continuity_count === 1 ? "" : "es"}`;
     body.append(badge);
   }
   if (item.raw_text && item.raw_text !== item.text) {
