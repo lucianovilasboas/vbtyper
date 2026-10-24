@@ -82,7 +82,7 @@ janela em foco — no terminal, cai junto do prompt onde o texto vai aparecer:
 | Fase | Desenho |
 |---|---|
 | Gravando | onda colorida, como o medidor da tela Ditar (o mesmo gradiente) |
-| Transcrevendo | spinner circular laranja girando (arco com ponta arredondada) |
+| Transcrevendo | anel fino girando ao fundo + frase minúscula “Transcrevendo…” (e “Aplicando perfil…” quando há segunda chamada) |
 | Inserido | ✓ verde, ~1 s |
 | Erro | ! vermelho, ~3 s |
 
@@ -167,9 +167,11 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
   liga; sem compensar, fala normal desenha quase uma reta. O helper acompanha o
   pico da janela (alvo ~60% da altura, no máximo 5×), reduz o ganho rápido e
   aumenta devagar, e ignora silêncio/chiado. `sensitivity` multiplica o resultado.
-- **O "processando" é um arco girando.** A barra que deslizava lembrava a onda da
-  gravação; o spinner circular (1,1 volta/s, desenhado a ~50 fps) distingue as
-  duas fases sem ambiguidade.
+- **O "processando" é um anel girando com a fase escrita por cima.** A barra que
+  deslizava lembrava a onda da gravação; um anel fino na borda (1,1 volta/s, a
+  ~50 fps) fica ao fundo, e uma frase minúscula no centro diz o que o backend está
+  fazendo: “Transcrevendo…” ou “Aplicando perfil…” (só quando há a segunda
+  chamada). O texto tem contorno escuro para não sumir em fundo claro.
 - **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
   ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
   linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,

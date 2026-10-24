@@ -318,3 +318,9 @@ def test_spinner_angle_advances_and_wraps(indicator):
 
 def test_spinner_arc_is_a_readable_fraction_of_the_circle(indicator):
     assert math.pi / 3 <= indicator.SPINNER_ARC <= 2 * math.pi / 3
+
+
+def test_processing_label_follows_the_backend_phase(indicator):
+    assert indicator.processing_label("rendering") == "Aplicando perfil…"
+    assert indicator.processing_label("transcribing") == "Transcrevendo…"
+    assert indicator.processing_label("") == "Transcrevendo…"

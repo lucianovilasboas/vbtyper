@@ -106,8 +106,10 @@ class FakeApi:
         mode: str = "literal",
         default_profile: str = "literal",
         profiles: list[dict] | None = None,
+        phase: str = "",
     ) -> None:
         self.mode = mode
+        self.phase = phase
         self.default_profile = default_profile
         self.profiles = list(profiles) if profiles is not None else list(self.DEFAULT_PROFILES)
         self.text = text
@@ -176,6 +178,7 @@ class FakeApi:
             error=self.error,
             transcription_id=self.transcription_id,
             text=self.text,
+            phase=self.phase,
         )
 
     def cancel_job(self, job_id: str) -> Job:

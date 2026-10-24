@@ -67,6 +67,7 @@ class Daemon:
         self.mode_current = ""
         self.profile_current = ""
         self.profiles: list[dict] = []
+        self.job_phase = ""
         self.state = HotkeyState()
         self.lock = threading.RLock()
         self.busy = False
@@ -170,6 +171,7 @@ class Daemon:
             "mode": self.current_mode,
             "profile": self.current_profile,
             "profiles": self.profiles,
+            "job_phase": self.job_phase,
         }
         if recording and self.preferences.shows_indicator and self.preferences.shape == "wave":
             get_waveform = getattr(self.recorder, "waveform", None)
@@ -396,6 +398,7 @@ class Daemon:
             path.unlink(missing_ok=True)
             with self.lock:
                 self.busy = False
+                self.job_phase = ""
 
     # ------------------------------------------------------------ transcrição
 
@@ -410,6 +413,7 @@ class Daemon:
 
     def _submit(self, path) -> Job:
         model, language, profile = self._options()
+        self.job_phase = ""
         return self.api.create_job(
             path.read_bytes(),
             filename=path.name,
@@ -421,6 +425,7 @@ class Daemon:
 
     def _wait_for_terminal(self, job: Job) -> Job | None:
         deadline = time.monotonic() + self.job_timeout
+        self.job_phase = job.phase
         while True:
             if self.cancel.is_set():
                 self._request_cancel(job)
@@ -432,6 +437,7 @@ class Daemon:
                 raise RuntimeError("Tempo limite de transcrição excedido.")
             self.cancel.wait(self.poll_interval)
             job = self.api.get_job(job.id)
+            self.job_phase = job.phase
 
     def _request_cancel(self, job: Job) -> None:
         with contextlib.suppress(ApiError):

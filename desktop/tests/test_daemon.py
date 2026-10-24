@@ -10,6 +10,7 @@ import pytest
 
 from fakes import FakeApi, FakePlatform, FakeRecorder
 from vb_typer_desktop import daemon as daemon_module
+from vb_typer_desktop.api import Job
 from vb_typer_desktop.daemon import Daemon
 from vb_typer_desktop.preferences import Preferences
 
@@ -613,3 +614,33 @@ def test_recorder_without_waveform_is_tolerated():
     agent.recorder = SimpleNamespace(level=5)
 
     assert "waveform" not in agent.state_snapshot()
+
+
+# -------------------------------------------------------- fase do processamento
+
+
+def test_snapshot_reports_the_job_phase():
+    agent, _ = build()
+    assert agent.state_snapshot()["job_phase"] == ""
+
+    agent.busy = True
+    agent.job_phase = "rendering"
+    assert agent.state_snapshot()["job_phase"] == "rendering"
+
+
+def test_wait_for_terminal_tracks_the_backend_phase():
+    api = FakeApi(status="succeeded", phase="rendering")
+    agent, _ = build(api=api)
+
+    agent._wait_for_terminal(Job(id="job-1", status="running"))
+
+    assert agent.job_phase == "rendering"
+
+
+def test_job_phase_is_cleared_when_the_dictation_ends(make_wav, tmp_path):
+    api = FakeApi(status="succeeded", phase="rendering")
+    agent, _ = build(api=api)
+
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert agent.job_phase == ""
