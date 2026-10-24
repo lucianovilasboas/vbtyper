@@ -1130,8 +1130,11 @@ function historyRow(item) {
 
   const body = cell("text-cell");
   const text = document.createElement("div");
-  text.className = item.error ? "empty-hint" : "text";
-  text.textContent = item.error || item.text || "(sem texto)";
+  // Ditado contínuo que só repetia o que já estava escrito: nada foi entregue.
+  const nothingNew = !item.error && !item.text && item.continuity_count > 0;
+  text.className = item.error || nothingNew ? "empty-hint" : "text";
+  text.textContent =
+    item.error || item.text || (nothingNew ? "nada novo — repetia o que já estava escrito" : "(sem texto)");
   body.append(text);
   if (item.mode === "smart") {
     const badge = document.createElement("span");
