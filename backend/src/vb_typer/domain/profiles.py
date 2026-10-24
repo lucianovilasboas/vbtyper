@@ -4,8 +4,9 @@ A transcrição fiel (ASR) é a **fonte da verdade**: todo perfil editorial part
 dela, nunca de outra versão já editada. Por isso as regras abaixo são comuns a
 todos — o "não invente" não depende de repetir isso em cada perfil.
 
-Os perfis embutidos vivem no código (versionados junto com o app); os
-personalizados vivem no banco. O slug é a chave nos dois casos.
+Os perfis padrão são semeados no banco a partir desta lista, uma única vez; a
+partir daí são editáveis e removíveis, com exceção da transcrição fiel. O slug é
+a chave nos dois casos.
 """
 
 from __future__ import annotations
@@ -245,3 +246,19 @@ def compose_instructions(profile: ProfileSpec) -> str:
 
 def is_literal(slug: str | None) -> bool:
     return (slug or "").strip().lower() in {"", LITERAL_SLUG}
+
+
+def is_pristine(spec: ProfileSpec) -> bool:
+    """A semente do perfil não foi editada (instruções, dica e opções originais).
+
+    O perfil "revisado" usa isto para só pular a segunda chamada quando ainda é
+    o prompt de fábrica; se o usuário ajustou o texto, o ajuste sempre roda.
+    """
+    default = BUILTIN_BY_SLUG.get(spec.slug)
+    if default is None or not spec.builtin:
+        return False
+    return (
+        spec.instructions.strip() == default.instructions.strip()
+        and (spec.hint or "") == (default.hint or "")
+        and (spec.options or {}) == (default.options or {})
+    )

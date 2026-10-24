@@ -326,7 +326,8 @@
           <h2 id="s-profiles">Perfis de texto</h2>
           <div class="settings-card">
             <p class="theme-help">
-              Os perfis embutidos são somente leitura: duplique para ajustar. Todo perfil editorial
+              Os perfis padrão vêm prontos e podem ser editados, duplicados ou removidos — só a
+              Transcrição fiel não pode ser excluída (é a base do ditado). Todo perfil editorial
               parte do texto reconhecido, nunca de outra versão já editada.
             </p>
             <div class="profiles-list" id="profiles-list"></div>
@@ -335,6 +336,10 @@
             </div>
             <div class="profile-editor" id="profile-editor" hidden>
               <input id="profile-name" type="text" maxlength="60" placeholder="Nome do perfil" autocomplete="off">
+              <p class="theme-help" id="profile-literal-note" hidden>
+                A transcrição fiel entrega o texto como foi reconhecido. Para transformar o texto,
+                duplique este perfil — instruções e opções não se aplicam a ele.
+              </p>
               <textarea id="profile-instructions" maxlength="8000"
                         placeholder="O que este perfil faz: ex. organize em tópicos, sem inventar decisões."></textarea>
               <div class="profile-items">

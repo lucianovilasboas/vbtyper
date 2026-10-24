@@ -91,6 +91,9 @@ def create_app(settings: AppSettings | None = None, paths: AppPaths | None = Non
     secure_file(resolved.database)
     token = load_or_create_token(resolved, settings.api_token)
     container = build_container(settings, resolved)
+    # A semente dos perfis padrão roda uma vez, depois que o esquema existe.
+    container.settings_service.current()
+    container.profiles.seed_defaults()
 
     app = FastAPI(
         title=settings.app_name,

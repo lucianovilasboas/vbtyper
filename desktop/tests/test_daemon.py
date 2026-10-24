@@ -577,6 +577,18 @@ def test_a_failed_refresh_never_empties_the_tray_menu():
     assert agent.profiles == FakeApi.DEFAULT_PROFILES
 
 
+def test_a_deleted_profile_clears_the_temporary_override():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+    agent.profile_override = "email"
+    api.profiles = [{"slug": "literal", "name": "Transcrição fiel"}]
+
+    agent.refresh_options()
+
+    assert agent.profile_override == ""
+
+
 # --------------------------------------------------------- atalhos de perfil
 
 

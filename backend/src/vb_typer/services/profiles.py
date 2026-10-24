@@ -1,8 +1,10 @@
-"""Perfis de texto: embutidos (código) + personalizados (banco).
+"""Perfis de texto: todos vivem no banco, semeados uma vez a partir do código.
 
-Os embutidos são somente leitura; para ajustar um deles, o usuário duplica e
-edita a cópia. Isso evita que uma migração sobrescreva o prompt de alguém e
-mantém os prompts do produto versionados junto com o app.
+Os padrões são inseridos na primeira inicialização (`seed_defaults`) e a partir
+daí são perfis como qualquer outro: editáveis e removíveis. A única exceção é a
+transcrição fiel, que é a base do ditado e não pode ser removida (só renomeada).
+O marcador `app_settings.profiles_seeded` garante que apagar um padrão não o
+ressuscita na próxima inicialização.
 """
 
 from __future__ import annotations
@@ -11,12 +13,13 @@ import re
 import unicodedata
 from typing import Any
 
+from sqlalchemy import insert
 from sqlalchemy.orm import Session, sessionmaker
 
 from vb_typer.core.timeutil import local_stamp
-from vb_typer.db.models import Profile
+from vb_typer.db.models import AppSetting, Profile
 from vb_typer.domain.errors import ConflictError, DomainError, NotFoundError
-from vb_typer.domain.profiles import BUILTIN_BY_SLUG, BUILTIN_PROFILES, ProfileSpec
+from vb_typer.domain.profiles import BUILTIN_PROFILES, LITERAL_SLUG, ProfileSpec
 from vb_typer.repositories.profiles import ProfileRepository
 
 ALLOWED_TONES = ("formal", "neutro", "informal")
@@ -87,7 +90,7 @@ def _to_spec(row: Profile) -> ProfileSpec:
         instructions=row.instructions,
         hint=row.hint,
         options=options,
-        builtin=False,
+        builtin=bool(row.seeded),
         model=options.get("modelo"),
     )
 
@@ -99,15 +102,45 @@ class ProfileService:
         self.repo = ProfileRepository()
 
     # --- leitura -----------------------------------------------------------
+    def seed_defaults(self) -> None:
+        """Insere os perfis padrão uma única vez; nunca ressuscita os apagados.
+
+        Chamado na inicialização, depois de `settings.current()` garantir a linha
+        de `app_settings`. O marcador é gravado na mesma transação da semente.
+        """
+        with self.session_factory() as session:
+            state = session.get(AppSetting, 1)
+            if state is None:
+                raise RuntimeError("app_settings precisa existir antes da semente dos perfis.")
+            if state.profiles_seeded:
+                return
+            now = local_stamp()
+            for order, spec in enumerate(BUILTIN_PROFILES):
+                session.execute(
+                    insert(Profile)
+                    .values(
+                        slug=spec.slug,
+                        name=spec.name,
+                        instructions=spec.instructions,
+                        hint=spec.hint,
+                        options=dict(spec.options or {}),
+                        seeded=True,
+                        sort_order=order,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    .prefix_with("OR IGNORE")
+                )
+            state.profiles_seeded = True
+            state.updated_at = now
+            session.commit()
+
     def list(self) -> list[ProfileSpec]:
         with self.session_factory() as session:
-            customs = [_to_spec(row) for row in self.repo.list(session)]
-        return [*BUILTIN_PROFILES, *customs]
+            return [_to_spec(row) for row in self.repo.list(session)]
 
     def get(self, slug: str) -> ProfileSpec:
         normalized = (slug or "").strip().lower()
-        if normalized in BUILTIN_BY_SLUG:
-            return BUILTIN_BY_SLUG[normalized]
         with self.session_factory() as session:
             row = self.repo.get(session, normalized)
             if row is None:
@@ -116,12 +149,10 @@ class ProfileService:
 
     def exists(self, slug: str) -> bool:
         normalized = (slug or "").strip().lower()
-        if normalized in BUILTIN_BY_SLUG:
-            return True
         with self.session_factory() as session:
             return self.repo.get(session, normalized) is not None
 
-    # --- escrita (só personalizados) --------------------------------------
+    # --- escrita -----------------------------------------------------------
     def create(
         self,
         *,
@@ -145,6 +176,8 @@ class ProfileService:
                 instructions=clean_instructions,
                 hint=clean_hint or None,
                 options=_clean_options(options, self.allowed_models),
+                seeded=False,
+                sort_order=0,
                 created_at=local_stamp(),
                 updated_at=local_stamp(),
             )
@@ -163,12 +196,24 @@ class ProfileService:
         options: dict[str, Any] | None = None,
     ) -> ProfileSpec:
         normalized = (slug or "").strip().lower()
-        if normalized in BUILTIN_BY_SLUG:
-            raise ConflictError("Perfis embutidos são somente leitura: duplique para editar.")
         with self.session_factory() as session:
             row = self.repo.get(session, normalized)
             if row is None:
                 raise NotFoundError(f"Perfil '{slug}' não existe.")
+            if normalized == LITERAL_SLUG:
+                # A transcrição fiel não tem instruções: só o nome faz sentido.
+                if name is not None:
+                    new_name = name.strip()
+                    if not NAME_MIN <= len(new_name) <= NAME_MAX:
+                        raise DomainError(
+                            f"O nome deve ter entre {NAME_MIN} e {NAME_MAX} caracteres.",
+                            code="invalid_name",
+                        )
+                    row.name = new_name
+                row.updated_at = local_stamp()
+                session.commit()
+                session.refresh(row)
+                return _to_spec(row)
             new_name = row.name if name is None else name.strip()
             new_instructions = row.instructions if instructions is None else instructions.strip()
             self._validate(new_name, new_instructions)
@@ -190,13 +235,19 @@ class ProfileService:
 
     def delete(self, slug: str) -> None:
         normalized = (slug or "").strip().lower()
-        if normalized in BUILTIN_BY_SLUG:
-            raise ConflictError("Perfis embutidos não podem ser removidos.")
+        if normalized == LITERAL_SLUG:
+            raise ConflictError("A transcrição fiel é a base do ditado e não pode ser removida.")
         with self.session_factory() as session:
             row = self.repo.get(session, normalized)
             if row is None:
                 raise NotFoundError(f"Perfil '{slug}' não existe.")
             self.repo.delete(session, row)
+            state = session.get(AppSetting, 1)
+            if state is not None and state.default_profile == normalized:
+                # Nunca deixar o padrão apontando para um perfil que sumiu.
+                state.default_profile = LITERAL_SLUG
+                state.mode = "literal"
+                state.updated_at = local_stamp()
             session.commit()
 
     # --- internos ----------------------------------------------------------
@@ -216,7 +267,7 @@ class ProfileService:
     def _unique_slug(self, session: Session, base: str) -> str:
         candidate = base
         counter = 2
-        while candidate in BUILTIN_BY_SLUG or self.repo.get(session, candidate) is not None:
+        while self.repo.get(session, candidate) is not None:
             suffix = f"-{counter}"
             candidate = f"{base[: 40 - len(suffix)]}{suffix}"
             counter += 1
