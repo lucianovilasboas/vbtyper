@@ -209,15 +209,18 @@ de propor trabalho novo.
   `--notices balloons`.
 - A fase de gravação do indicador é a **mesma onda da tela Ditar**: linha
   colorida com o gradiente do canvas web, desenhada a partir das amostras reais
-  do microfone; sem amostras ainda, um envelope senoidal de repouso. A fase
-  de transcrição é uma barra que desliza — o movimento é o que distingue as duas.
-  `"shape": "bar"` no `desktop.json` troca por uma barra de nível ancorada à
-  esquerda.
+  do microfone; sem amostras ainda, um envelope senoidal de repouso. A fase de
+  transcrição é um **arco circular girando** (spinner), não uma barra que desliza
+  — assim as duas fases nunca se confundem. `"shape": "bar"` no `desktop.json`
+  troca a gravação por uma barra de nível ancorada à esquerda.
 - A onda do indicador usa **áudio real**: o daemon lê a cauda do WAV em andamento
   (`Recorder.waveform`, 512 quadros) e envia 256 pontos no snapshot apenas quando
-  está gravando, o indicador está ligado e o `shape` é `wave`. O nível do medidor
-  do `arecord` continua alimentando a barra opcional, e a captura usa
-  `--period-size=256` (~17 ms por nível, contra ~140 ms do padrão). O ataque é
-  por constante de tempo (~35 ms) e o **retorno é linear** (350%/s, zerando abaixo
-  de 4%) — exponencial no retorno deixa uma cauda que se percebe como lentidão.
-  `speed` e `sensitivity` no `desktop.json` ajustam a reação sem tocar em código.
+  está gravando, o indicador está ligado e o `shape` é `wave`. Como o `arecord`
+  não tem o AGC do navegador, o helper aplica **ganho automático** (pico alvo
+  ~60%, no máximo 5×, ataque rápido e liberação lenta, sem amplificar silêncio);
+  `sensitivity` multiplica onda e barra. O nível do medidor do `arecord` continua
+  alimentando a barra opcional, e a captura usa `--period-size=256` (~17 ms por
+  nível, contra ~140 ms do padrão). Para a barra, o ataque é por constante de
+  tempo (~35 ms) e o **retorno é linear** (350%/s, zerando abaixo de 4%):
+  exponencial no retorno deixa uma cauda que se percebe como lentidão. O estado é
+  consultado a cada 30 ms e o desenho roda a ~50 fps.

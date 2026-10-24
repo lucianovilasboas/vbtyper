@@ -22,9 +22,10 @@ WAVE_LINE_WIDTH = 2.5
 WAVE_GLOW_WIDTH = 5.5
 # Enquanto o painel está visível a consulta é rápida; ocioso, ele é econômico.
 # 60 ms é o limite de quanto o painel pode demorar a aparecer após o atalho.
-POLL_VISIBLE_MS = 45
+POLL_VISIBLE_MS = 30
 POLL_IDLE_MS = 60
-FRAME_MS = 40
+# ~50 fps: o arco do "processando" gira liso mesmo com o estado a 33 Hz.
+FRAME_MS = 20
 # Constante de tempo do ataque, em segundos: sobe quase junto com a voz.
 ATTACK_S = 0.035
 # O retorno é **linear**, em pontos de nível por segundo. Uma exponencial deixa
@@ -41,6 +42,17 @@ FAILS_TO_QUIT = 12
 FULL_LEVEL = 36.0
 # Curva aplicada ao nível: levanta a faixa média, para a onda "sentir" mais.
 GAMMA = 0.75
+# Ganho automático da onda: o navegador liga o AGC do microfone e o arecord não.
+# Sem isto a fala normal desenha uma linha quase reta, ao contrário da tela Ditar.
+WAVE_TARGET_PEAK = 76.0  # ~60% de 127, a faixa que o AGC do navegador entrega
+WAVE_MAX_GAIN = 5.0
+WAVE_MIN_PEAK = 2.0  # abaixo disto é silêncio/chiado: não amplificar
+WAVE_GAIN_ATTACK_S = 0.12  # fala forte: reduz o ganho rápido
+WAVE_GAIN_RELEASE_S = 0.90  # fala baixa: sobe devagar, sem bombear
+# Spinner da fase "transcrevendo": arco girando no lugar da barra que deslizava.
+SPINNER_TURNS_PER_SECOND = 1.1
+SPINNER_ARC = math.pi * 0.55
+SPINNER_RADIUS_RATIO = 0.30
 DEBUG_PATH = os.environ.get("VB_TYPER_INDICATOR_DEBUG")
 
 # A barra de nível usa o roxo de destaque do app (o mesmo `accent` do 1.x).
@@ -130,6 +142,38 @@ class Levels:
         del self.values[: -self.bars]
 
 
+class WaveGain:
+    """Normaliza a onda para a mesma amplitude que a tela Ditar mostra.
+
+    O pico da janela vira referência: fala baixa ganha amplificação (até
+    ``max_gain``), fala forte é atenuada para caber no painel e o silêncio não é
+    amplificado. O ganho sobe devagar e desce rápido, para o desenho não pulsar.
+    """
+
+    def __init__(self, target: float = WAVE_TARGET_PEAK, max_gain: float = WAVE_MAX_GAIN) -> None:
+        self.target = target
+        self.max_gain = max_gain
+        self.gain = 1.0
+
+    def apply(
+        self,
+        samples,
+        sensitivity: float = 1.0,
+        elapsed: float = FRAME_MS / 1000,
+    ) -> tuple[int, ...]:
+        """Aplica o ganho corrente e devolve as amostras já no intervalo 0–255."""
+        if not samples:
+            return ()
+        peak = max(abs(value - 128) for value in samples)
+        if peak >= WAVE_MIN_PEAK:
+            wanted = min(self.max_gain, self.target / peak)
+            tau = WAVE_GAIN_ATTACK_S if wanted < self.gain else WAVE_GAIN_RELEASE_S
+            factor = 1.0 if tau <= 0 else 1.0 - math.exp(-max(0.0, elapsed) / tau)
+            self.gain += (wanted - self.gain) * factor
+        scale = self.gain * max(0.0, sensitivity)
+        return tuple(min(255, max(0, round(128 + (value - 128) * scale))) for value in samples)
+
+
 def _debug(message: str) -> None:
     """Diagnóstico opcional do helper (que não tem terminal para reclamar)."""
     if not DEBUG_PATH:
@@ -177,6 +221,11 @@ def waveform_points(samples, width: float, height: float) -> tuple[tuple[float, 
         return ()
     slice_width = width / len(samples)
     return tuple((index * slice_width, value * height / 256) for index, value in enumerate(samples))
+
+
+def spinner_angle(now: float) -> float:
+    """Ângulo do arco do spinner, em radianos (uma volta a cada ~0,9 s)."""
+    return (now * SPINNER_TURNS_PER_SECOND * 2 * math.pi) % (2 * math.pi)
 
 
 def _wave_gradient(cairo, width: float, alpha: float):
@@ -227,6 +276,7 @@ class Indicator:
         self.sensitivity = max(0.2, sensitivity)
         self.shape = shape if shape in SHAPES else "wave"
         self.levels = Levels(attack_s=ATTACK_S / self.speed, fall_rate=FALL_PER_SECOND * self.speed)
+        self.wave_gain = WaveGain()
         self.phase = "idle"
         self.level = 0
         self.waveform: tuple[int, ...] = ()
@@ -403,7 +453,7 @@ class Indicator:
             else:
                 self._draw_level_bar(cr, width, height)
         elif self.phase == "processing":
-            self._draw_sweep(cr, width, height)
+            self._draw_spinner(cr, width, height)
         elif self.phase == "inserted":
             self._draw_check(cr, width, height)
         else:
@@ -483,7 +533,7 @@ class Indicator:
                 else:
                     cr.line_to(x, y)
 
-        samples = self.waveform
+        samples = self.wave_gain.apply(self.waveform, self.sensitivity)
         cr.set_line_cap(cairo.LINE_CAP_ROUND)
         cr.set_line_join(cairo.LINE_JOIN_ROUND)
         if samples:
@@ -506,19 +556,25 @@ class Indicator:
         cr.line_to(width, height / 2)
         cr.stroke()
 
-    def _draw_sweep(self, cr, width, height) -> None:
-        progress = (time.monotonic() * 0.8) % 2.0
-        position = progress if progress <= 1 else 2 - progress
-        bar_width = width * 0.22
-        _rounded(
-            cr,
-            (width - bar_width) * position,
-            height * 0.3,
-            bar_width,
-            height * 0.4,
-            height * 0.2,
-        )
-        self._paint(cr, ORANGE)
+    def _draw_spinner(self, cr, width, height) -> None:
+        """Arco circular girando: o "processando" não se confunde com a gravação."""
+        import cairo
+
+        centre_x, centre_y = width / 2, height / 2
+        radius = max(6.0, min(width, height) * SPINNER_RADIUS_RATIO)
+        line_width = max(3.0, height * 0.12)
+        cr.set_line_cap(cairo.LINE_CAP_ROUND)
+
+        cr.new_path()
+        cr.arc(centre_x, centre_y, radius, 0, 2 * math.pi)
+        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.22 * self._alpha)
+        cr.set_line_width(line_width)
+        cr.stroke()
+
+        start = spinner_angle(time.monotonic())
+        cr.new_path()
+        cr.arc(centre_x, centre_y, radius, start, start + SPINNER_ARC)
+        self._stroke(cr, ORANGE, line_width)
 
     def _draw_check(self, cr, width, height) -> None:
         cr.move_to(width * 0.38, height * 0.52)

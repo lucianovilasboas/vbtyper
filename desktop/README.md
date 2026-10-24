@@ -82,7 +82,7 @@ janela em foco — no terminal, cai junto do prompt onde o texto vai aparecer:
 | Fase | Desenho |
 |---|---|
 | Gravando | onda colorida, como o medidor da tela Ditar (o mesmo gradiente) |
-| Transcrevendo | barra laranja varrendo (segmento que desliza) |
+| Transcrevendo | spinner circular laranja girando (arco com ponta arredondada) |
 | Inserido | ✓ verde, ~1 s |
 | Erro | ! vermelho, ~3 s |
 
@@ -93,16 +93,19 @@ Quem decide o visual é o cliente; o helper (`tray/indicator.py`) só desenha o 
 recebe pelo socket de controle.
 
 A fase de gravação é a **mesma onda da tela Ditar**: linha colorida com o
-gradiente do canvas web, desenhada a partir das amostras reais do microfone.
-Enquanto ainda não há amostras (o começo da captura), o helper desenha o envelope
-senoidal de repouso da web. Quem preferir a **barra de nível** ancorada à esquerda,
-com trilho e preenchimento, usa `"shape": "bar"`.
+gradiente do canvas web, desenhada a partir das amostras reais do microfone. Como
+o `arecord` entrega o sinal cru (sem o AGC que o navegador liga), o helper aplica
+um **ganho automático** — fala baixa sobe, fala forte não estoura e silêncio não
+vira chiado — para a onda reagir como na web. Enquanto ainda não há amostras (o
+começo da captura), desenha o envelope senoidal de repouso. Quem preferir a
+**barra de nível** ancorada à esquerda, com trilho e preenchimento, usa
+`"shape": "bar"`.
 
 A onda vem do **áudio real**: o cliente envia a janela recente da captura
 (512 quadros, 256 pontos) junto do estado, e o nível do medidor do `arecord`
 continua alimentando a barra opcional. A captura usa `--period-size=256` para o
 nível sair a cada ~17 ms em vez de ~140 ms. O painel aparece em ~60 ms (consulta
-ociosa) e, já visível, consulta a cada 45 ms.
+ociosa) e, já visível, consulta a cada 30 ms; o desenho roda a ~50 fps.
 
 ### Preferências
 
@@ -116,7 +119,7 @@ ociosa) e, já visível, consulta a cada 45 ms.
 | `sound` | `false` | som nos balões que ainda existirem |
 | `size` | `40` | altura do painel em pixels (24 a 96) |
 | `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
-| `sensitivity` | `1.0` | quão altas ficam as barras para a mesma voz (0.5 a 3.0) |
+| `sensitivity` | `1.0` | quão altas ficam a onda e as barras para a mesma voz (0.5 a 3.0) |
 | `shape` | `wave` | desenho da fase de gravação: `wave` (a onda da tela Ditar) ou `bar` (barra de nível) |
 
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
@@ -160,6 +163,13 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
 - **A onda da web usa amostras, não o medidor.** O daemon lê a cauda do WAV em
   andamento (`Recorder.waveform`, 512 quadros) e manda 256 pontos no estado; o
   helper só desenha. A barra opcional (`shape: bar`) continua usando o nível.
+- **Ganho automático na onda.** O `arecord` não tem o AGC que o `getUserMedia`
+  liga; sem compensar, fala normal desenha quase uma reta. O helper acompanha o
+  pico da janela (alvo ~60% da altura, no máximo 5×), reduz o ganho rápido e
+  aumenta devagar, e ignora silêncio/chiado. `sensitivity` multiplica o resultado.
+- **O "processando" é um arco girando.** A barra que deslizava lembrava a onda da
+  gravação; o spinner circular (1,1 volta/s, desenhado a ~50 fps) distingue as
+  duas fases sem ambiguidade.
 - **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
   ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
   linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,

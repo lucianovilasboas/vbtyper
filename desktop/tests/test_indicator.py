@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 from pathlib import Path
 
 import pytest
@@ -249,3 +250,71 @@ def test_the_wave_is_the_default_shape(indicator):
     signature = inspect.signature(indicator.Indicator.__init__)
     assert signature.parameters["shape"].default == "wave"
     assert indicator.SHAPES == ("bar", "wave")
+
+
+# ------------------------------------------------------------------ ganho
+
+
+def test_wave_gain_does_not_amplify_silence(indicator):
+    gain = indicator.WaveGain()
+    output = gain.apply([128, 127, 129] * 10, elapsed=1.0)
+    assert set(output) <= {127, 128, 129}
+    assert gain.gain == 1.0
+
+
+def test_wave_gain_lifts_quiet_speech(indicator):
+    gain = indicator.WaveGain()
+    quiet = [128 + 10, 128 - 10] * 20
+    output = ()
+    for _ in range(50):
+        output = gain.apply(quiet, elapsed=0.02)
+    assert gain.gain > 2.0
+    assert max(abs(value - 128) for value in output) > 30
+
+
+def test_wave_gain_keeps_loud_speech_inside_the_panel(indicator):
+    gain = indicator.WaveGain()
+    loud = [0, 255] * 20
+    output = ()
+    for _ in range(50):
+        output = gain.apply(loud, elapsed=0.02)
+    assert min(output) >= 0
+    assert max(output) <= 255
+    assert max(abs(value - 128) for value in output) <= 127
+
+
+def test_wave_gain_attack_is_faster_than_the_release(indicator):
+    attack = indicator.WaveGain()
+    attack.gain = attack.max_gain
+    attack.apply([0, 255] * 10, elapsed=0.1)
+    release = indicator.WaveGain()
+    release.gain = 1.0
+    release.apply([128 + 10, 128 - 10] * 10, elapsed=0.1)
+    attacked = (5.0 - attack.gain) / (5.0 - 76 / 127)
+    released = (release.gain - 1.0) / (5.0 - 1.0)
+    assert attacked > released * 4
+
+
+def test_wave_gain_follows_the_sensitivity(indicator):
+    quiet = [128 + 20] * 10
+    full = indicator.WaveGain()
+    half = indicator.WaveGain()
+    for _ in range(30):
+        out_full = full.apply(quiet, sensitivity=1.0, elapsed=0.02)
+        out_half = half.apply(quiet, sensitivity=0.5, elapsed=0.02)
+    assert abs(out_full[0] - 128) > abs(out_half[0] - 128) * 1.8
+
+
+# ---------------------------------------------------------------- spinner
+
+
+def test_spinner_angle_advances_and_wraps(indicator):
+    assert indicator.spinner_angle(0.1) > indicator.spinner_angle(0.0)
+    one_turn = 1.0 / indicator.SPINNER_TURNS_PER_SECOND
+    assert indicator.spinner_angle(one_turn) == pytest.approx(
+        indicator.spinner_angle(0.0), abs=1e-6
+    )
+
+
+def test_spinner_arc_is_a_readable_fraction_of_the_circle(indicator):
+    assert math.pi / 3 <= indicator.SPINNER_ARC <= 2 * math.pi / 3
