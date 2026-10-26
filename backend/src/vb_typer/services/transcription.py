@@ -241,6 +241,8 @@ class TranscriptionService:
         usage: dict | None = None,
         text_model: str | None = None,
         continuity_count: int = 0,
+        delivery: str = "text",
+        tools: list[str] | None = None,
     ) -> Job:
         with self.session_factory() as session:
             job = self.jobs.get(session, job_id)
@@ -261,6 +263,8 @@ class TranscriptionService:
                 transcribe_ms=transcribe_ms,
                 inserted=False,
                 continuity_count=continuity_count,
+                delivery=delivery,
+                tools=tools,
             )
             self.transcriptions.add(session, row)
             # Só há versão quando a segunda chamada aconteceu de fato: o texto

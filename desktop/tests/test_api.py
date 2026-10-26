@@ -221,3 +221,25 @@ def test_list_profiles_falls_back_to_empty_on_failure():
 
 def test_no_token_means_no_authorization_header():
     assert api.ApiClient(token="")._headers() == {}
+
+
+def test_parse_job_reads_delivery_and_tools():
+    job = api.parse_job(
+        {
+            "id": "job-1",
+            "status": "succeeded",
+            "result": {
+                "text": "a b",
+                "delivery": "tui",
+                "tools": ["single_line", "trim"],
+            },
+        }
+    )
+    assert job.delivery == "tui"
+    assert job.tools == ("single_line", "trim")
+
+
+def test_parse_job_defaults_to_text():
+    job = api.parse_job({"id": "job-1", "status": "queued"})
+    assert job.delivery == "text"
+    assert job.tools == ()

@@ -180,3 +180,46 @@ async def test_continuous_flag_survives_the_round_trip(client, auth):
     updated = await client.patch(f"{ENDPOINT}/{slug}", headers=auth, json={"options": {}})
     assert updated.status_code == 200
     assert "continuo" not in updated.json()["options"]
+
+
+async def test_invalid_delivery_is_rejected(client, auth):
+    response = await client.post(
+        ENDPOINT,
+        headers=auth,
+        json={
+            "name": "Destino inválido",
+            "instructions": "Instruções suficientemente longas.",
+            "options": {"delivery": "telepatia"},
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_delivery"
+
+
+async def test_invalid_tool_is_rejected(client, auth):
+    response = await client.post(
+        ENDPOINT,
+        headers=auth,
+        json={
+            "name": "Ferramenta inválida",
+            "instructions": "Instruções suficientemente longas.",
+            "options": {"tools": ["nao-existe"]},
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_tool"
+
+
+async def test_literal_accepts_delivery_options(client, auth):
+    response = await client.patch(
+        f"{ENDPOINT}/literal",
+        headers=auth,
+        json={
+            "name": "Transcrição fiel",
+            "options": {"delivery": "tui", "tools": ["strip_markdown"]},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["options"]["delivery"] == "tui"
+    assert body["options"]["tools"] == ["strip_markdown"]

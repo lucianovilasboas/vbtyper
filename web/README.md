@@ -15,7 +15,8 @@ Quatro telas, na mesma página:
 - **Histórico** — tabela com quando, áudio, palavras, **custo estimado** e o
   texto de cada ditado; busca, exclusão e exportação em CSV.
 - **Configurações** — aparência (claro/escuro/automático), modelo, idioma, início
-  da semana, estado da credencial e teste de conexão.
+  da semana, perfis de texto (com o **destino do texto**: normal ou terminal/TUI),
+  estado da credencial e teste de conexão.
 
 Arquivos:
 

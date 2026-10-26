@@ -144,9 +144,13 @@ class FakeApi:
         profiles: list[dict] | None = None,
         phase: str = "",
         hotkeys: dict[str, str] | None = None,
+        delivery: str = "text",
+        tools: tuple[str, ...] = (),
     ) -> None:
         self.mode = mode
         self.phase = phase
+        self.delivery = delivery
+        self.tools = tuple(tools)
         self.default_profile = default_profile
         self.profiles = list(profiles) if profiles is not None else list(self.DEFAULT_PROFILES)
         self.hotkeys = dict(hotkeys) if hotkeys is not None else dict(DEFAULT_HOTKEYS)
@@ -221,6 +225,8 @@ class FakeApi:
             transcription_id=self.transcription_id,
             text=self.text,
             phase=self.phase,
+            delivery=self.delivery,
+            tools=self.tools,
         )
 
     def cancel_job(self, job_id: str) -> Job:

@@ -189,6 +189,13 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
 24. A versão é uma só: `VERSION` na raiz, sincronizada por
     `scripts/set-version.sh` com os pyprojects e `__version__`. A tag `vX.Y.Z`
     tem de bater com `VERSION`; o workflow de release recusa quando não bate.
+25. O texto dos perfis passa por um pipeline genérico (`domain/text_tools.py`):
+    ferramentas puras com fases `before`/`after`, um destino semântico
+    (`options.delivery`: `text`, `tui`, ...) e extras (`tools`/`tools_before`).
+    O backend aplica e grava o texto final, o `raw_text` original e os campos
+    `delivery`/`tools`; o desktop aplica o guard do destino antes do XTEST; o web
+    só exibe. TUI é um destino, não a regra. Não use tool calling da LLM para
+    essas transformações.
 
 ## Testes
 

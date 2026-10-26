@@ -32,6 +32,10 @@ class Transcription(Base):
     error: Mapped[str | None] = mapped_column(Text)
     # Quantos ditados anteriores entraram como contexto de continuidade.
     continuity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Destino de entrega ("text", "tui", ...) e ferramentas efetivas aplicadas,
+    # para o cliente e o histórico saberem como o texto foi preparado.
+    delivery: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
+    tools: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
     # Rastreabilidade da importação do app 1.x (idempotência).
     legacy_source: Mapped[str | None] = mapped_column(String(255))

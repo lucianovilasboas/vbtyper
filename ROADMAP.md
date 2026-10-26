@@ -120,6 +120,24 @@ entram no prompt como bloco próprio ("Regras deste perfil") — o usuário defi
 ação e as restrições sem escrever um prompt inteiro. Os quatro modelos de texto
 foram verificados na API real (21/10/2026).
 
+### Ferramentas de texto e destinos: **feito em `v0.19.0`**
+
+O pipeline de perfis ganhou transformações determinísticas
+(`domain/text_tools.py`) com fases `before`/`after`: `strip_ansi`,
+`strip_control`, `spaces_for_tabs`, `single_line`, `trim` e `strip_markdown`. O
+perfil declara um **destino** (`options.delivery`: `text` ou `tui`) e
+ferramentas extras (`tools`/`tools_before`); o destino é um preset semântico —
+TUI é um destino, não a regra — e pode ganhar outros (markdown, code, shell) sem
+mexer no worker.
+
+O worker e o render aplicam `tools_before` antes da segunda chamada e
+`tools` + preset do destino depois; o perfil literal também pode usar (o
+`raw_text` continua intacto). A transcrição guarda `delivery` e `tools` efetivos
+(migração `0010`). O cliente desktop aplica um guard por destino antes do XTEST
+(TUI: uma linha, sem Tab/ESC); o web mostra o selo do destino e o editor de
+perfis tem o select **Destino do texto** + **Remover Markdown**. Não há tool
+calling da LLM: as transformações são determinísticas.
+
 ### Estruturado: pendente, e é o que falta decidir
 
 Continua como estava: **não** vai para o cursor (devolve um documento, para a

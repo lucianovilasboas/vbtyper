@@ -117,9 +117,14 @@ Cancela. Jobs já terminais são devolvidos sem alteração.
 { "items": [ { "id": 12, "created_at": "2026-10-18T18:44:02", "text": "olá", "words": 1,
   "duration_s": 1.0, "audio_bytes": 32044, "model": "gpt-transcribe", "language": "pt",
   "mode": "smart", "raw_text": "o c p f dele é quatro dois um",
+  "delivery": "tui", "tools": ["strip_ansi", "spaces_for_tabs", "single_line",
+  "strip_control", "trim"],
   "transcribe_ms": 1200, "insert_ms": 240, "inserted": true, "error": null } ],
   "total": 1, "limit": 20, "offset": 0 }
 ```
+
+`delivery` e `tools` descrevem como o texto foi preparado; o cliente usa o
+destino para a guarda de inserção (ex.: `tui` = uma linha, sem Enter/Tab).
 
 ### `GET /transcriptions/{id}`
 

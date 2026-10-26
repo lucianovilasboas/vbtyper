@@ -54,6 +54,23 @@ def test_successful_dictation_types_text_and_records_insertion(make_wav, tmp_pat
     assert not recorder.path.exists()
 
 
+def test_tui_delivery_guards_before_typing(make_wav, tmp_path):
+    api, platform = FakeApi(text="a\nb\t\x1b[31m", delivery="tui"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert platform.typed == ["a b"]
+    assert agent.last_transcript == "a b"
+
+
+def test_text_delivery_keeps_newlines(make_wav, tmp_path):
+    api, platform = FakeApi(text="a\nb"), FakePlatform()
+    agent, _ = build(api=api, platform=platform)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert platform.typed == ["a\nb"]
+
+
 def test_uploads_the_capture_as_wav(make_wav, tmp_path):
     api = FakeApi()
     agent, _ = build(api=api)

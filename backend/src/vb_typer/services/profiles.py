@@ -20,6 +20,7 @@ from vb_typer.core.timeutil import local_stamp
 from vb_typer.db.models import AppSetting, Profile
 from vb_typer.domain.errors import ConflictError, DomainError, NotFoundError
 from vb_typer.domain.profiles import BUILTIN_PROFILES, LITERAL_SLUG, ProfileSpec
+from vb_typer.domain.text_tools import TARGETS, validate_tools
 from vb_typer.repositories.profiles import ProfileRepository
 
 ALLOWED_TONES = ("formal", "neutro", "informal")
@@ -42,7 +43,9 @@ def _clean_options(options: dict[str, Any] | None, allowed_models: tuple[str, ..
 
     - ``tom``/``concisao``/``preservar_termos``: ajustes de estilo;
     - ``items``: regras curtas escritas pelo usuário, viram um bloco no prompt;
-    - ``modelo``: modelo de texto só deste perfil (vazio = o padrão global).
+    - ``modelo``: modelo de texto só deste perfil (vazio = o padrão global);
+    - ``delivery``: destino do texto (``text``, ``tui``, ...);
+    - ``tools``/``tools_before``: ferramentas extras do pipeline.
     """
     cleaned: dict[str, Any] = {}
     if not isinstance(options, dict):
@@ -58,6 +61,26 @@ def _clean_options(options: dict[str, Any] | None, allowed_models: tuple[str, ..
     # Ditado contínuo: usa os ditados anteriores como contexto da segunda chamada.
     if options.get("continuo") is True:
         cleaned["continuo"] = True
+
+    delivery = str(options.get("delivery") or "text").strip().lower()
+    if delivery not in TARGETS:
+        raise DomainError(
+            "Destino de texto inválido. Use um de: " + ", ".join(TARGETS) + ".",
+            code="invalid_delivery",
+        )
+    if delivery != "text":
+        cleaned["delivery"] = delivery
+
+    for key, phase in (("tools", "after"), ("tools_before", "before")):
+        raw_tools = options.get(key)
+        if raw_tools is None:
+            continue
+        try:
+            names = validate_tools(raw_tools, phase)
+        except ValueError as exc:
+            raise DomainError(str(exc), code="invalid_tool") from exc
+        if names:
+            cleaned[key] = names
 
     raw_items = options.get("items")
     if isinstance(raw_items, list):
@@ -204,7 +227,7 @@ class ProfileService:
             if row is None:
                 raise NotFoundError(f"Perfil '{slug}' não existe.")
             if normalized == LITERAL_SLUG:
-                # A transcrição fiel não tem instruções: só o nome faz sentido.
+                # A transcrição fiel não tem instruções: nome e opções de entrega.
                 if name is not None:
                     new_name = name.strip()
                     if not NAME_MIN <= len(new_name) <= NAME_MAX:
@@ -213,6 +236,8 @@ class ProfileService:
                             code="invalid_name",
                         )
                     row.name = new_name
+                if options is not None:
+                    row.options = _clean_options(options, self.allowed_models)
                 row.updated_at = local_stamp()
                 session.commit()
                 session.refresh(row)

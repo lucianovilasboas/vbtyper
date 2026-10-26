@@ -251,3 +251,26 @@ async def test_render_never_uses_the_continuity_context(
     body = json.loads(respx_mock.calls[-1].request.content)
     assert "[DITADOS ANTERIORES" not in body["messages"][1]["content"]
     assert body["messages"][1]["content"] == "texto original"
+
+
+async def test_render_applies_the_delivery_pipeline(
+    client, auth, container, with_api_key, respx_mock
+):
+    profile = container.profiles.create(
+        name="TUI render",
+        instructions="Entregue um comando curto e objetivo, sem enfeites.",
+        options={"delivery": "tui"},
+    )
+    row = _row(container)
+    respx_mock.post(CHAT).mock(return_value=_chat("a\nb\t\x1b[31m"))
+
+    response = await client.post(
+        f"{ENDPOINT}/{row.id}/render", headers=auth, json={"profile": profile.slug}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["text"] == "a b"
+    assert body["raw_text"] == "texto original"
+    assert body["delivery"] == "tui"
+    assert "single_line" in body["tools"]

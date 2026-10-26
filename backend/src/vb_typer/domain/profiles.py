@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from vb_typer.domain.text_tools import TARGETS, effective_tools, target_hint
+
 LITERAL_SLUG = "literal"
 REVISED_SLUG = "revisado"
 
@@ -305,11 +307,30 @@ def compose_instructions(profile: ProfileSpec, *, continuity: bool = False) -> s
         style.append("preserve termos técnicos como foram ditos")
     if style:
         parts.append("Ajustes de estilo: " + "; ".join(style) + ".")
+    hint = target_hint(delivery_of(profile))
+    if not hint and "single_line" in tools_for(profile, "after"):
+        hint = "Entregue o texto em uma única linha, sem quebras de linha."
+    if hint:
+        parts.append(hint)
     # Por último, de propósito: em matéria de repetição, estas regras vencem as do
     # perfil (que costumam pedir "mantenha os prazos exatamente como foram falados").
     if continuity:
         parts.append(CONTINUITY_RULES.strip())
     return "\n\n".join(part for part in parts if part)
+
+
+def delivery_of(profile: ProfileSpec) -> str:
+    """Destino do texto do perfil; um valor desconhecido cai em ``text``."""
+    value = str((profile.options or {}).get("delivery") or "text").strip().lower()
+    return value if value in TARGETS else "text"
+
+
+def tools_for(profile: ProfileSpec, phase: str = "after") -> list[str]:
+    """Ferramentas efetivas do perfil (extras + preset do destino)."""
+    options = profile.options or {}
+    key = "tools_before" if phase == "before" else "tools"
+    extras = options.get(key) or []
+    return effective_tools(delivery_of(profile), extras, phase)
 
 
 def is_literal(slug: str | None) -> bool:

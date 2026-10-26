@@ -46,6 +46,9 @@ class Job:
     text: str = ""
     # Sub-fase do job: "transcribing" ou "rendering" (segunda chamada do perfil).
     phase: str = ""
+    # Como o texto foi entregue; o cliente aplica o guard do destino.
+    delivery: str = "text"
+    tools: tuple[str, ...] = ()
 
     @property
     def finished(self) -> bool:
@@ -54,6 +57,7 @@ class Job:
 
 def parse_job(payload: dict) -> Job:
     result = payload.get("result") or {}
+    tools = result.get("tools")
     return Job(
         id=str(payload.get("id", "")),
         status=str(payload.get("status", "")),
@@ -61,6 +65,10 @@ def parse_job(payload: dict) -> Job:
         transcription_id=payload.get("transcription_id"),
         text=str(result.get("text") or ""),
         phase=str(payload.get("phase") or ""),
+        delivery=str(result.get("delivery") or "text"),
+        tools=tuple(str(item) for item in tools if isinstance(item, str))
+        if isinstance(tools, list)
+        else (),
     )
 
 
