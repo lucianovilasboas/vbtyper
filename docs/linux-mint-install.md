@@ -65,25 +65,25 @@ dispositivo Pulse do ALSA está disponível sem gravar áudio.
 ## Executar pelo AppImage
 
 Também é possível usar o cliente sem instalar o serviço nem criar atalho. O
-AppImage pronto fica em `dist/VB-Typer-0.1.8-x86_64.AppImage`; gere-o com
+AppImage pronto fica em `dist/VB-Typer-0.1.9-x86_64.AppImage`; gere-o com
 `./scripts/build-appimage.sh` (requer `uv`, internet no primeiro build e o
 [`appimagetool`](https://github.com/AppImage/appimagetool/releases/continuous)).
 
 ```bash
-chmod +x dist/VB-Typer-0.1.8-x86_64.AppImage
-./dist/VB-Typer-0.1.8-x86_64.AppImage
+chmod +x dist/VB-Typer-0.1.9-x86_64.AppImage
+./dist/VB-Typer-0.1.9-x86_64.AppImage
 ```
 
 O AppImage usa o domínio HTTPS por padrão. Para usar outro servidor, passe a
 URL ao executar; por exemplo, Tailscale:
 
 ```bash
-./dist/VB-Typer-0.1.8-x86_64.AppImage \
+./dist/VB-Typer-0.1.9-x86_64.AppImage \
   --base-url https://xps.tail5ae70d.ts.net:8444
 ```
 
 Se o FUSE não estiver disponível, use
-`APPIMAGE_EXTRACT_AND_RUN=1 ./dist/VB-Typer-0.1.8-x86_64.AppImage` (acrescente
+`APPIMAGE_EXTRACT_AND_RUN=1 ./dist/VB-Typer-0.1.9-x86_64.AppImage` (acrescente
 `--base-url` depois do nome, se necessário). O token deve existir em
 `~/.config/vb-typer/api-token` com permissão `0600`; os helpers GTK e `arecord`
 continuam usando as bibliotecas e os programas fornecidos pelo Linux Mint. Se

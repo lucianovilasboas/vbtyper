@@ -192,11 +192,12 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
   ~50 fps) fica ao fundo, e uma frase legível no centro diz o que o backend está
   fazendo: “Transcrevendo…” ou “Aplicando perfil…” (só quando há a segunda
   chamada). O texto tem contorno escuro para não sumir em fundo claro.
-- **A troca de perfil é uma pílula.** O nome vai em negrito (~14 px) sobre um
-  fundo escuro translúcido, com a posição (“3/10” ou “padrão”) abaixo; a caixa do
-  indicador fica mais larga (200 px) só nessa fase, e o flash dura 1,6 s. A
-  pílula garante contraste em qualquer fundo; o resto do indicador continua
-  transparente.
+- **A troca de perfil é uma pílula de tamanho fixo.** O nome vai em negrito
+  (~12,5 px) sobre um gradiente escuro com halo lilás, e a posição (“• 3/10” ou
+  “• padrão”) abaixo; a pílula mede 184×32 e **não muda com o texto**, então
+  trocar de perfil não move nada. A caixa do indicador fica mais larga (200 px)
+  só nessa fase, e o flash dura 1,6 s. Nomes longos encolhem/reticenciam dentro
+  da pílula; o resto do indicador continua transparente.
 - **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
   ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
   linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,
