@@ -871,6 +871,14 @@ async function loadProfiles() {
   state.profiles = await api.listProfiles();
   renderProfileOptions();
   renderProfilesList();
+  refreshProfileBadges();
+}
+
+/** Pílulas do histórico: nome atual do perfil, inclusive depois de renomear. */
+function refreshProfileBadges() {
+  for (const badge of document.querySelectorAll(".badge[data-profile]")) {
+    badge.textContent = profileName(badge.dataset.profile);
+  }
 }
 
 function renderProfileOptions() {
@@ -1136,12 +1144,14 @@ function historyRow(item) {
   text.textContent =
     item.error || item.text || (nothingNew ? "nada a acrescentar — repetia o que já estava escrito" : "(sem texto)");
   body.append(text);
-  if (item.mode === "smart") {
-    const badge = document.createElement("span");
-    badge.className = "badge smart";
-    badge.textContent = "inteligente";
-    body.append(badge);
-  }
+  // Pílula do perfil que gerou o texto (não um rótulo genérico). Fica oculta
+  // nos ditados literais e aparece ao abrir uma versão editorial.
+  const profileBadge = document.createElement("span");
+  profileBadge.className = "badge smart";
+  profileBadge.dataset.profile = item.profile || "";
+  profileBadge.textContent = profileName(item.profile);
+  profileBadge.hidden = item.mode !== "smart";
+  body.append(profileBadge);
   if (item.inserted) {
     const badge = document.createElement("span");
     badge.className = "badge";
@@ -1216,7 +1226,7 @@ function historyRow(item) {
         return;
       }
       const detail = await api.getTranscription(item.id);
-      body.append(versionToolbar(item, detail, text, row));
+      body.append(versionToolbar(item, detail, text, row, profileBadge));
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -1230,9 +1240,10 @@ function historyRow(item) {
 
 /**
  * Barra da linha do histórico: alterna entre as versões já geradas e pede uma
- * nova a partir do texto reconhecido (`raw_text`, no servidor).
+ * nova a partir do texto reconhecido (`raw_text`, no servidor). A pílula do
+ * perfil acompanha a versão exibida e some ao voltar ao literal.
  */
-function versionToolbar(item, detail, textEl, row) {
+function versionToolbar(item, detail, textEl, row, profileBadge) {
   const bar = document.createElement("div");
   bar.className = "versions";
 
@@ -1252,6 +1263,12 @@ function versionToolbar(item, detail, textEl, row) {
   pick.addEventListener("change", () => {
     const chosen = (detail.versions || []).find((version) => String(version.id) === pick.value);
     textEl.textContent = chosen ? chosen.text : detail.raw_text || detail.text;
+    // A pílula acompanha o texto exibido: a versão escolhida ou o original.
+    profileBadge.hidden = !chosen;
+    if (chosen) {
+      profileBadge.dataset.profile = chosen.profile;
+      profileBadge.textContent = profileName(chosen.profile);
+    }
   });
   bar.append(pick);
 
