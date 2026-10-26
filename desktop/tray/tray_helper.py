@@ -104,6 +104,11 @@ class Tray:
         # -----------------------------------------------------
 
         self.menu.append(self.Gtk.SeparatorMenuItem())
+        configure_item = self.Gtk.MenuItem(label="Configurar conexão…")
+        configure_item.connect("activate", lambda *_: self.send("configure"))
+        configure_item.show()
+        self.menu.append(configure_item)
+
         quit_item = self.Gtk.MenuItem(label="Sair")
         quit_item.connect("activate", lambda *_: self.send("quit"))
         quit_item.show()

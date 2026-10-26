@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 DESKTOP="$ROOT/desktop"
-VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$DESKTOP/pyproject.toml" | head -n 1)"
+VERSION="$(cat "$ROOT/VERSION" 2>/dev/null || sed -n 's/^version = "\([^"]*\)"/\1/p' "$DESKTOP/pyproject.toml" | head -n 1)"
 ARCH="$(uname -m)"
 OUTPUT="${1:-$ROOT/dist/VB-Typer-$VERSION-x86_64.AppImage}"
 APPIMAGETOOL_BIN="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
@@ -14,47 +14,26 @@ die() {
   exit 1
 }
 
-[[ -n "$VERSION" ]] || die "não foi possível ler a versão em desktop/pyproject.toml."
+[[ -n "$VERSION" ]] || die "não foi possível ler a versão em VERSION."
 [[ "$ARCH" == "x86_64" ]] || die "este build gera AppImage x86_64; arquitetura detectada: $ARCH."
 [[ -n "$APPIMAGETOOL_BIN" && -x "$APPIMAGETOOL_BIN" ]] \
   || die "appimagetool não encontrado; instale-o ou defina APPIMAGETOOL=/caminho/appimagetool."
-command -v uv >/dev/null 2>&1 || die "uv não encontrado; instale uv para preparar o build Python."
 
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/vb-typer-appimage.XXXXXX")"
 trap 'rm -rf -- "$BUILD_ROOT"' EXIT
 APPDIR="$BUILD_ROOT/VB-Typer.AppDir"
-PYINSTALLER_DIR="$BUILD_ROOT/pyinstaller"
+BINARY="$BUILD_ROOT/vb-typer-desktop"
 OUTPUT_PATH="$(realpath -m "$OUTPUT")"
 
 mkdir -p \
   "$APPDIR/usr/bin" \
   "$APPDIR/usr/share/applications" \
-  "$APPDIR/usr/share/icons/hicolor/256x256/apps" \
-  "$PYINSTALLER_DIR/dist" \
-  "$PYINSTALLER_DIR/work" \
-  "$PYINSTALLER_DIR/spec"
+  "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
-# `tray/` entra no pacote como dado; caches de teste não podem ir junto.
-find "$DESKTOP/tray" -name "__pycache__" -type d -prune -exec rm -rf {} +
-
-printf 'Empacotando o cliente Python %s...\n' "$VERSION"
-uv run --project "$DESKTOP" --extra build pyinstaller \
-  --noconfirm \
-  --clean \
-  --onefile \
-  --name vb-typer-desktop \
-  --paths "$DESKTOP/src" \
-  --add-data "$DESKTOP/tray:tray" \
-  --add-data "$DESKTOP/assets:assets" \
-  --distpath "$PYINSTALLER_DIR/dist" \
-  --workpath "$PYINSTALLER_DIR/work" \
-  --specpath "$PYINSTALLER_DIR/spec" \
-  "$DESKTOP/src/vb_typer_desktop/__main__.py"
+"$ROOT/scripts/build-binary.sh" "$BINARY"
 
 install -m 0755 "$ROOT/desktop/appimage/AppRun" "$APPDIR/AppRun"
-install -m 0755 \
-  "$PYINSTALLER_DIR/dist/vb-typer-desktop" \
-  "$APPDIR/usr/bin/vb-typer-desktop"
+install -m 0755 "$BINARY" "$APPDIR/usr/bin/vb-typer-desktop"
 install -m 0644 "$DESKTOP/assets/logo.png" "$APPDIR/vb-typer.png"
 install -m 0644 "$DESKTOP/assets/logo.png" \
   "$APPDIR/usr/share/icons/hicolor/256x256/apps/vb-typer.png"

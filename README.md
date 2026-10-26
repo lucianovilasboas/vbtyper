@@ -250,11 +250,14 @@ desktop/
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
 inserir. O texto vai direto no ponto do cursor do aplicativo em foco, por XTEST —
 não há área de transferência nem colagem. Enquanto grava, um indicador silencioso
-com a onda do microfone aparece junto da janela em foco. Detalhes em
+com a onda do microfone aparece junto da janela em foco.
+
+Para instalar no dia a dia, baixe o `.deb` (duplo clique) ou o AppImage na página
+de **Releases** do GitHub. No primeiro uso o cliente pede o endereço e o token da
+API, valida a conexão e cria o autostart XDG. Detalhes em
 [`desktop/README.md`](desktop/README.md).
 
 ## Próximas fases
 
 1. Cliente desktop para macOS e Windows, pela camada `platform/` já existente.
-2. Empacotamento one-file e autostart do cliente desktop.
-3. Análise semântica opcional sobre o histórico (assíncrona, opt-in).
+2. Análise semântica opcional sobre o histórico (assíncrona, opt-in).

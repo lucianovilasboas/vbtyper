@@ -282,12 +282,26 @@ aplicativos com a marca. A unit declara `DISPLAY`/`XAUTHORITY` porque
 `graphical-session.target` não é ativado no Cinnamon, e o cliente trata `SIGTERM`
 para desmontar bandeja e indicador ao parar.
 
-### O que falta desta seção
+### Instalável: **feito em `v0.18.0`**
 
-**AppImage x86_64 feito.** `scripts/build-appimage.sh` gera o cliente one-file
-com PyInstaller dentro de um AppImage executável diretamente. O token fica na
-configuração do usuário; os helpers GTK e `arecord` continuam sendo dependências
-do Linux Mint, conforme a arquitetura atual do cliente.
+O cliente ganhou instalação sem terminal e configuração no primeiro uso:
+
+- **primeiro uso:** diálogo GTK pede endereço e token, testa a conexão e grava o
+  token em `~/.config/vb-typer/api-token` (0600); a URL vai para `desktop.json`.
+  O token **não** é embutido no AppImage público. A bandeja ganhou
+  **Configurar conexão…** para trocar URL/token sem reiniciar.
+- **instalação:** `.deb` (duplo clique) e AppImage; os dois usam o mesmo binário
+  PyInstaller (`scripts/build-binary.sh`). No AppImage, o primeiro uso oferece
+  integrar ao sistema (menu + autostart) e copia para `~/.local/bin` para o
+  caminho não quebrar na atualização.
+- **autostart:** entrada XDG em `~/.config/autostart/vb-typer.desktop`; a unit
+  systemd continua disponível para rodar a partir do código-fonte.
+- **versionamento:** `VERSION` é a fonte única; `scripts/set-version.sh` sincroniza
+  os pyprojects e `__version__`, e a tag `vX.Y.Z` precisa bater com ele.
+- **release:** `.github/workflows/release.yml` gera AppImage + `.deb` +
+  `sha256sums.txt` em tags `v*` (e artefatos avulsos no `workflow_dispatch`).
+
+**O que falta:** macOS/Windows (seção 4), assinatura dos pacotes e auto-update.
 
 ---
 

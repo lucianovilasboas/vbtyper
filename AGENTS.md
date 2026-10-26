@@ -172,6 +172,24 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     reais). A checagem de comportamento é manual e reproduzível:
     `scripts/verify-continuity.py` (gasta centavos, não roda em teste).
 
+21. O token da API **nunca** é embutido em artefato público (AppImage/.deb). O
+    primeiro uso abre o diálogo GTK (`desktop/tray/setup.py`), valida a conexão e
+    grava o token em `~/.config/vb-typer/api-token` (0600); a URL fica em
+    `desktop.json`. O token não passa por argumentos de linha de comando. A
+    bandeja oferece **Configurar conexão…** e o daemon troca o `ApiClient` sem
+    reiniciar.
+22. A URL pública (`https://vbtyper.lucianovilasboas.com.br`) é o **padrão** do
+    pacote (`sys.frozen`/`APPIMAGE`), nunca um override: a precedência é flag >
+    `VB_TYPER_API_BASE_URL` > `desktop.json` > padrão. O AppRun não exporta a
+    variável, senão a escolha do usuário no diálogo não valeria.
+23. O autostart das versões instaladas é **XDG**
+    (`~/.config/autostart/vb-typer.desktop`), criado pelo diálogo; a unit
+    systemd continua sendo o caminho de desenvolvimento. O `.deb` e o AppImage
+    saem do **mesmo** binário PyInstaller (`scripts/build-binary.sh`).
+24. A versão é uma só: `VERSION` na raiz, sincronizada por
+    `scripts/set-version.sh` com os pyprojects e `__version__`. A tag `vX.Y.Z`
+    tem de bater com `VERSION`; o workflow de release recusa quando não bate.
+
 ## Testes
 
 - Use o cliente ASGI (`httpx.ASGITransport` + `LifespanManager`), nunca o
