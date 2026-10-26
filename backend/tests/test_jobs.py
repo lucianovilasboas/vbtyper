@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -330,3 +331,132 @@ def test_invalid_default_profile_falls_back_to_literal(container, make_wav):
     )
 
     assert job.profile == "literal"
+
+
+def _tui_profile(container, name="TUI teste", tools=None):
+    return container.profiles.create(
+        name=name,
+        instructions="Entregue um comando curto e objetivo, sem enfeites.",
+        options={"delivery": "tui", "tools": tools or []},
+    )
+
+
+async def test_tui_delivery_cleans_the_profile_output(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """O destino TUI aplica o preset depois da segunda chamada."""
+    profile = _tui_profile(container)
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "texto cru reconhecido"})
+    )
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "linha 1\nlinha 2\t\x1b[31m\x00"}}],
+                "usage": {"prompt_tokens": 30, "completion_tokens": 10},
+            },
+        )
+    )
+    files = {"file": ("gravacao.wav", make_wav(0.5), "audio/wav")}
+
+    response = await client.post(
+        ENDPOINT, headers=auth, files=files, data={"profile": profile.slug}
+    )
+
+    assert response.status_code == 202
+    job = await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+    result = job["result"]
+    assert result["text"] == "linha 1 linha 2"
+    assert result["raw_text"] == "texto cru reconhecido"
+    assert result["delivery"] == "tui"
+    assert result["tools"] == [
+        "strip_ansi",
+        "spaces_for_tabs",
+        "single_line",
+        "strip_control",
+        "trim",
+    ]
+
+
+async def test_literal_profile_can_use_a_delivery(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """A transcrição fiel também pode ser preparada para um destino."""
+    container.profiles.update("literal", options={"delivery": "tui"})
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "a\nb\x1b[31m"})
+    )
+    files = {"file": ("gravacao.wav", make_wav(0.5), "audio/wav")}
+
+    response = await client.post(ENDPOINT, headers=auth, files=files, data={"profile": "literal"})
+
+    assert response.status_code == 202
+    job = await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+    result = job["result"]
+    assert result["text"] == "a b"
+    assert result["raw_text"] == "a\nb\x1b[31m"
+    assert result["profile"] == "literal"
+    assert result["mode"] == "literal"
+    assert result["delivery"] == "tui"
+    assert "single_line" in result["tools"]
+
+
+async def test_tui_profile_failure_still_cleans_the_literal(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Falha na segunda chamada não perde o ditado nem a garantia do destino."""
+    profile = _tui_profile(container, "TUI falha")
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "a\nb"})
+    )
+    respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(500, json={"error": {"message": "falhou"}})
+    )
+    files = {"file": ("gravacao.wav", make_wav(0.5), "audio/wav")}
+
+    response = await client.post(
+        ENDPOINT, headers=auth, files=files, data={"profile": profile.slug}
+    )
+
+    assert response.status_code == 202
+    job = await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+    result = job["result"]
+    assert result["text"] == "a b"
+    assert result["profile"] == "literal"
+    assert result["delivery"] == "tui"
+
+
+async def test_tools_before_run_before_the_second_call(
+    client, auth, container, make_wav, with_api_key, respx_mock, wait_for_job
+):
+    """Ferramentas `before` limpam o texto que vai para a LLM, sem tocar no cru."""
+    profile = container.profiles.create(
+        name="Antes teste",
+        instructions="Ajuste o texto para uma mensagem curta.",
+        options={"tools_before": ["strip_control"]},
+    )
+    respx_mock.post("https://api.openai.com/v1/audio/transcriptions").mock(
+        return_value=httpx.Response(200, json={"text": "Oi\x00 Rafael"})
+    )
+    route = respx_mock.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "Oi Rafael"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            },
+        )
+    )
+    files = {"file": ("gravacao.wav", make_wav(0.5), "audio/wav")}
+
+    response = await client.post(
+        ENDPOINT, headers=auth, files=files, data={"profile": profile.slug}
+    )
+
+    assert response.status_code == 202
+    job = await wait_for_job(client, response.json()["id"], auth, {"succeeded"})
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["messages"][1]["content"] == "Oi Rafael"
+    assert "\x00" not in sent["messages"][1]["content"]
+    assert job["result"]["raw_text"] == "Oi\x00 Rafael"

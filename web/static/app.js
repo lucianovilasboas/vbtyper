@@ -915,6 +915,8 @@ function renderProfilesList() {
       name.append(badge);
     }
     const meta = [];
+    const delivery = (profile.options && profile.options.delivery) || "text";
+    if (delivery !== "text") meta.push(delivery === "tui" ? "terminal" : delivery);
     if (profile.model) meta.push(profile.model);
     const regras = (profile.options && profile.options.items) || [];
     if (regras.length) meta.push(`${regras.length} regra${regras.length === 1 ? "" : "s"}`);
@@ -1005,7 +1007,7 @@ const PROFILE_FIELDS = [
 ];
 
 function setProfileFieldsEnabled(enabled) {
-  // A transcrição fiel não tem instruções: só o nome pode mudar.
+  // A transcrição fiel não tem instruções; destino e ferramentas seguem editáveis.
   for (const id of PROFILE_FIELDS) {
     const element = $(id);
     if (element) element.disabled = !enabled;
@@ -1033,6 +1035,9 @@ function openProfileEditor(profile) {
   state.profileItems = [...((profile && profile.options && profile.options.items) || [])];
   renderProfileItems();
   $("profile-model").value = (profile && profile.model) || "";
+  const tools = (profile && profile.options && profile.options.tools) || [];
+  $("profile-delivery").value = (profile && profile.options && profile.options.delivery) || "text";
+  $("profile-markdown").checked = Array.isArray(tools) && tools.includes("strip_markdown");
   $("profile-name").focus();
 }
 
@@ -1045,17 +1050,35 @@ function closeProfileEditor() {
 async function saveProfile() {
   const name = $("profile-name").value.trim();
   const instructions = $("profile-instructions").value.trim();
-  const options = {};
+  const current = state.profileEditing
+    ? state.profiles.find((profile) => profile.slug === state.profileEditing)
+    : null;
+  // Preserva o que o editor não conhece (tools_before, outras ferramentas etc.).
+  const options = { ...((current && current.options) || {}) };
   if ($("profile-tone").value) options.tom = $("profile-tone").value;
+  else delete options.tom;
   if ($("profile-concision").value) options.concisao = $("profile-concision").value;
+  else delete options.concisao;
   if ($("profile-terms").checked) options.preservar_termos = true;
+  else delete options.preservar_termos;
   if ($("profile-continuous").checked) options.continuo = true;
+  else delete options.continuo;
   if (state.profileItems.length) options.items = [...state.profileItems];
+  else delete options.items;
   if ($("profile-model").value) options.modelo = $("profile-model").value;
+  else delete options.modelo;
+  const delivery = $("profile-delivery").value || "text";
+  if (delivery !== "text") options.delivery = delivery;
+  else delete options.delivery;
+  const tools = new Set(Array.isArray(options.tools) ? options.tools : []);
+  if ($("profile-markdown").checked) tools.add("strip_markdown");
+  else tools.delete("strip_markdown");
+  if (tools.size) options.tools = [...tools];
+  else delete options.tools;
 
   try {
     if (state.profileEditing === "literal") {
-      await api.patchProfile("literal", { name });
+      await api.patchProfile("literal", { name, options });
     } else if (state.profileEditing) {
       await api.patchProfile(state.profileEditing, { name, instructions, options });
     } else {
@@ -1152,6 +1175,15 @@ function historyRow(item) {
   profileBadge.textContent = profileName(item.profile);
   profileBadge.hidden = item.mode !== "smart";
   body.append(profileBadge);
+  const delivery = item.delivery || "text";
+  if (delivery !== "text") {
+    const badge = document.createElement("span");
+    badge.className = "badge";
+    badge.textContent = delivery === "tui" ? "terminal" : delivery;
+    const tools = Array.isArray(item.tools) ? item.tools : [];
+    badge.title = `destino ${delivery}${tools.length ? ` · ${tools.join(", ")}` : ""}`;
+    body.append(badge);
+  }
   if (item.inserted) {
     const badge = document.createElement("span");
     badge.className = "badge";

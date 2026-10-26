@@ -38,6 +38,9 @@ class TranscriptionRead(ORMModel):
     error: str | None = None
     # Ditados anteriores usados como contexto de continuidade (0 = nenhum).
     continuity_count: int = 0
+    # Destino de entrega e ferramentas efetivas aplicadas ao texto.
+    delivery: str = "text"
+    tools: list[str] = []
     # Só o detalhe preenche as versões; a lista fica leve.
     versions: list[VersionRead] = []
 

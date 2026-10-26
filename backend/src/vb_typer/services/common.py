@@ -31,6 +31,8 @@ def new_transcription(
     created_at: str | None = None,
     legacy_source: str | None = None,
     legacy_id: int | None = None,
+    delivery: str = "text",
+    tools: list[str] | None = None,
 ) -> Transcription:
     """Monta a linha de histórico sem tocar no banco."""
     return Transcription(
@@ -52,4 +54,6 @@ def new_transcription(
         continuity_count=int(continuity_count or 0),
         legacy_source=legacy_source,
         legacy_id=legacy_id,
+        delivery=delivery,
+        tools=list(tools or []),
     )

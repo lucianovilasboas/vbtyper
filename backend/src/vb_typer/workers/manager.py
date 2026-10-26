@@ -19,10 +19,13 @@ from vb_typer.domain.profiles import (
     LITERAL_SLUG,
     REVISED_SLUG,
     compose_instructions,
+    delivery_of,
     is_literal,
     is_nothing_new,
     is_pristine,
+    tools_for,
 )
+from vb_typer.domain.text_tools import apply_tools
 from vb_typer.services.continuity import ContinuityService
 from vb_typer.services.normalize import needs_normalization
 from vb_typer.services.profiles import ProfileService
@@ -179,17 +182,22 @@ class JobManager:
                 prompt=None if is_literal(profile.slug) else profile.hint,
             )
             transcribe_ms = int((time.monotonic() - started) * 1000)
-            text = (result.get("text") or "").strip()
-            if not text:
+            raw = (result.get("text") or "").strip()
+            if not raw:
                 raise ProviderError("A API não reconheceu fala nesse áudio.")
+            prepared = apply_tools(raw, tools_for(profile, "before"), "before")
             # O perfil pode fixar o modelo; senão vale o padrão das configurações.
             model = profile.model or await asyncio.to_thread(self.settings_service.smart_model_now)
-            applied = await self._apply_profile(text, context, profile, api_key, model)
+            applied = await self._apply_profile(prepared, context, profile, api_key, model)
+            after_tools = tools_for(profile, "after")
+            final_text = apply_tools(applied.text, after_tools, "after")
+            if applied.text.strip() and not final_text:
+                raise ProviderError("O texto ficou vazio após a limpeza do perfil.")
             await asyncio.to_thread(
                 self.service.finish_success,
                 job_id,
-                text=applied.text,
-                raw_text=(result.get("text") or "").strip(),
+                text=final_text,
+                raw_text=raw,
                 mode=applied.mode,
                 profile=applied.profile,
                 usage=applied.usage,
@@ -197,6 +205,8 @@ class JobManager:
                 continuity_count=applied.continuity,
                 duration_s=context.duration_s,
                 transcribe_ms=transcribe_ms,
+                delivery=delivery_of(profile),
+                tools=after_tools,
             )
         except asyncio.CancelledError:
             if self._stopping:

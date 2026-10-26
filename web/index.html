@@ -337,8 +337,9 @@
             <div class="profile-editor" id="profile-editor" hidden>
               <input id="profile-name" type="text" maxlength="60" placeholder="Nome do perfil" autocomplete="off">
               <p class="theme-help" id="profile-literal-note" hidden>
-                A transcrição fiel entrega o texto como foi reconhecido. Para transformar o texto,
-                duplique este perfil — instruções e opções não se aplicam a ele.
+                A transcrição fiel entrega o texto como foi reconhecido. O destino do texto
+                (por exemplo, terminal) pode ser ajustado; para transformar o conteúdo,
+                duplique este perfil.
               </p>
               <textarea id="profile-instructions" maxlength="8000"
                         placeholder="O que este perfil faz: ex. organize em tópicos, sem inventar decisões."></textarea>
@@ -352,6 +353,12 @@
                 </div>
               </div>
               <div class="profile-options">
+                <label>Destino do texto
+                  <select id="profile-delivery">
+                    <option value="text">Texto normal</option>
+                    <option value="tui">Terminal (TUI)</option>
+                  </select>
+                </label>
                 <label>Modelo do texto
                   <select id="profile-model"></select>
                 </label>
@@ -376,6 +383,9 @@
                 </label>
                 <label class="check">
                   <input id="profile-continuous" type="checkbox"> ditado contínuo
+                </label>
+                <label class="check">
+                  <input id="profile-markdown" type="checkbox"> remover Markdown
                 </label>
               </div>
               <p class="theme-help">

@@ -29,6 +29,7 @@ from vb_typer_desktop.profile_switch import (
     bindings,
     next_profile,
 )
+from vb_typer_desktop.text_guards import apply_guard
 from vb_typer_desktop.ui import open_ui
 
 POLL_INTERVAL_S = 0.3
@@ -576,7 +577,7 @@ class Daemon:
     def _insert(self, job: Job, target: int | None) -> None:
         if job.status != "succeeded":
             raise RuntimeError(job.error or "A transcrição falhou.")
-        text = (job.text or "").strip()
+        text = apply_guard((job.text or "").strip(), job.delivery)
         if not text:
             # Perfil contínuo com tudo já escrito: o job conclui sem texto e não há
             # nada a inserir. Isso é sucesso, não erro de reconhecimento.

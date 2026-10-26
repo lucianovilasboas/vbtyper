@@ -50,6 +50,16 @@ lugar onde a interface o edita — e a bandeja relê a configuração de tempos 
 tempos, então uma troca feita na tela aparece no menu sozinha. Perfis criados ou
 apagados na interface também aparecem/desaparecem sem reiniciar o cliente.
 
+### Destino do texto
+
+No editor de perfis da interface, **Destino do texto** pode ser **Texto normal**
+(quebras de linha preservadas, para e-mail/ata) ou **Terminal (TUI)**: o backend
+entrega o texto em uma linha, sem Tab/ESC/caracteres de controle, e o cliente
+aplica uma guarda final antes do XTEST. Perfis com destino diferente de `text`
+mostram o selo correspondente no histórico; o texto reconhecido continua
+disponível em "ver o texto reconhecido". **Remover Markdown** é uma ferramenta
+extra opcional do perfil.
+
 ### Trocar o perfil pelo teclado
 
 | Atalho | Ação |
