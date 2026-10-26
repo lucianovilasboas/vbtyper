@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import os
 import shutil
 import signal
 import subprocess
@@ -12,8 +11,8 @@ import sys
 import time
 from dataclasses import replace
 
-from vb_typer_desktop import __version__, preferences
-from vb_typer_desktop.api import DEFAULT_BASE_URL, ApiClient, ApiError, load_token
+from vb_typer_desktop import __version__, connection, preferences
+from vb_typer_desktop.api import ApiClient, ApiError, load_token
 from vb_typer_desktop.control import ControlServer, control_socket_path, talk_to_running_instance
 from vb_typer_desktop.daemon import Daemon
 from vb_typer_desktop.notify import notify
@@ -22,7 +21,7 @@ from vb_typer_desktop.profile_switch import DEFAULT_HOTKEYS
 from vb_typer_desktop.tray import start_indicator, start_tray
 from vb_typer_desktop.ui import ui_url
 
-BACKEND_HINT = "Inicie o serviço com: systemctl --user start vb-typer-api"
+BACKEND_HINT = "Verifique a conexão em Bandeja → Configurar conexão… ou inicie o serviço local."
 
 
 def _warn_if_backend_down(api: ApiClient, attempts: int = 10, delay: float = 0.5) -> None:
@@ -37,6 +36,16 @@ def _warn_if_backend_down(api: ApiClient, attempts: int = 10, delay: float = 0.5
             notify(
                 "VB Typer — erro",
                 "Chave OpenAI ausente. Salve na interface ou rode: vb-typer-api --setup",
+                "critical",
+                sound=False,
+            )
+        try:
+            api.settings()
+        except ApiError:
+            notify(
+                "VB Typer — conexão",
+                "Não foi possível autenticar na API. Confira o token em "
+                "Bandeja → Configurar conexão…",
                 "critical",
                 sound=False,
             )
@@ -185,17 +194,36 @@ def run_daemon(
     return 0
 
 
+def _configure(api: ApiClient, current: preferences.Preferences) -> bool:
+    """Abre o diálogo de conexão e devolve se o usuário salvou."""
+    try:
+        result = connection.configure_interactively(api.base_url, current)
+    except (OSError, ValueError) as exc:
+        notify("VB Typer — erro", f"Não foi possível salvar a conexão: {exc}", "critical")
+        print(f"Não foi possível salvar a conexão: {exc}", file=sys.stderr)
+        return False
+    if result is None:
+        print("Configuração cancelada.", file=sys.stderr)
+        return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="vb-typer-desktop", description="Ditado por voz por atalho global (Ctrl+Super)."
     )
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("VB_TYPER_API_BASE_URL") or DEFAULT_BASE_URL,
-        help="endereço da API (padrão: VB_TYPER_API_BASE_URL ou a API local)",
+        default=None,
+        help="endereço da API (padrão: ambiente, depois a conexão salva, depois a API local)",
     )
     parser.add_argument("--status", action="store_true", help="mostrar o estado e sair")
     parser.add_argument("--self-test", action="store_true", help="verificar o ambiente sem ditar")
+    parser.add_argument(
+        "--configure",
+        action="store_true",
+        help="abrir o diálogo de conexão (URL e token) e sair",
+    )
     parser.add_argument("--ui", action="store_true", help="abrir a interface ao iniciar")
     parser.add_argument("--no-tray", action="store_true", help="não usar a bandeja do sistema")
     parser.add_argument("--force", action="store_true", help="ignorar instância já em execução")
@@ -224,7 +252,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Preferências gravadas em {preferences.save(prefs)}")
         return 0
 
-    api = ApiClient(base_url=args.base_url)
+    base_url = connection.resolve_base_url(args.base_url, prefs)
+    api = ApiClient(base_url=base_url)
+    if args.configure:
+        saved = _configure(api, prefs)
+        api.close()
+        return 0 if saved else 1
     if args.status:
         code = _status(api, prefs)
         api.close()
@@ -241,6 +274,22 @@ def main(argv: list[str] | None = None) -> int:
         print("VB Typer já está em execução.", flush=True)
         api.close()
         return 0
+
+    # Primeiro uso: sem token não há como falar com a API. O diálogo é a única
+    # forma de entrada — nada de pedir comando ao usuário.
+    if not connection.has_token():
+        if not _configure(api, prefs):
+            notify(
+                "VB Typer — configuração necessária",
+                "Informe o endereço e o token para começar a ditar.",
+                "critical",
+                sound=False,
+            )
+            api.close()
+            return 1
+        prefs = preferences.load()
+        api.close()
+        api = ApiClient(base_url=connection.resolve_base_url(None, prefs))
 
     return run_daemon(api, with_tray=not args.no_tray, open_browser=args.ui, prefs=prefs)
 

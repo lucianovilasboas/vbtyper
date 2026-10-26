@@ -2,7 +2,4 @@
 set -eu
 
 APPDIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
-VB_TYPER_API_BASE_URL="${VB_TYPER_API_BASE_URL:-https://vbtyper.lucianovilasboas.com.br}"
-export VB_TYPER_API_BASE_URL
-
 exec "$APPDIR/usr/bin/vb-typer-desktop" "$@"

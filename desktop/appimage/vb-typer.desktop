@@ -2,7 +2,7 @@
 Type=Application
 Name=VB Typer
 Comment=Ditado por voz no cursor ativo
-Exec=vb-typer-desktop --base-url https://vbtyper.lucianovilasboas.com.br
+Exec=vb-typer-desktop
 Icon=vb-typer
 Terminal=false
 Categories=Utility;

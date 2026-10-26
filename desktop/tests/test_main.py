@@ -12,9 +12,63 @@ def fake_running(monkeypatch):
     monkeypatch.setattr(main_module, "talk_to_running_instance", lambda cmd: {"ok": True})
 
 
+@pytest.fixture(autouse=True)
+def token_for_startup(monkeypatch):
+    """O caminho normal inicia o daemon; sem token ele abriria o diálogo GTK."""
+    monkeypatch.setenv("VB_TYPER_API_TOKEN", "token-de-teste")
+
+
 def test_version_short_circuits(capsys):
     assert main_module.main(["--version"]) == 0
     assert "VB Typer Desktop" in capsys.readouterr().out
+
+
+def test_first_run_opens_the_setup_dialog(monkeypatch):
+    monkeypatch.delenv("VB_TYPER_API_TOKEN")
+    monkeypatch.setattr(main_module.connection, "has_token", lambda: False)
+    monkeypatch.setattr(main_module, "talk_to_running_instance", lambda cmd: None)
+
+    def configure(api, prefs):
+        main_module.connection.save_connection("https://novo.exemplo.com", "token-novo")
+        return main_module.connection.SetupResult("https://novo.exemplo.com", "token-novo", False)
+
+    monkeypatch.setattr(main_module.connection, "configure_interactively", configure)
+    seen: list[str] = []
+    monkeypatch.setattr(
+        main_module, "run_daemon", lambda api, **kwargs: seen.append(api.base_url) or 0
+    )
+
+    assert main_module.main([]) == 0
+    assert seen == ["https://novo.exemplo.com"]
+
+
+def test_first_run_cancel_exits_without_starting(monkeypatch):
+    monkeypatch.delenv("VB_TYPER_API_TOKEN")
+    monkeypatch.setattr(main_module.connection, "has_token", lambda: False)
+    monkeypatch.setattr(main_module, "talk_to_running_instance", lambda cmd: None)
+    monkeypatch.setattr(main_module.connection, "configure_interactively", lambda *a: None)
+    notifications: list[tuple] = []
+    monkeypatch.setattr(main_module, "notify", lambda *a, **k: notifications.append(a))
+    started: list[str] = []
+    monkeypatch.setattr(main_module, "run_daemon", lambda *a, **k: started.append("sim") or 0)
+
+    assert main_module.main([]) == 1
+    assert started == []
+    assert notifications
+
+
+def test_configure_flag_saves_and_exits(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        main_module.connection,
+        "configure_interactively",
+        lambda api_url, prefs: (
+            calls.append(api_url)
+            or main_module.connection.SetupResult("https://x.exemplo.com", "t", False)
+        ),
+    )
+    assert main_module.main(["--configure"]) == 0
+    assert calls
 
 
 def test_second_instance_defers_to_the_running_one(monkeypatch, fake_running):

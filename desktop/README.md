@@ -4,6 +4,28 @@ Ditado por voz por atalho global no Linux/X11, consumindo a API REST local do
 VB Typer. O texto é **inserido no ponto do cursor** do aplicativo em foco — não
 há área de transferência, nem colagem, nem ativação de janela.
 
+## Instalar (usuário final)
+
+Baixe o instalador na página de **Releases** do GitHub:
+
+- **`.deb` (recomendado):** dê dois cliques e instale pelo Gerenciador de
+  Arquivos/GDebi. O **VB Typer** aparece no menu de aplicativos.
+- **AppImage:** permita a execução (Propriedades → Permissões) e abra. No
+  primeiro uso, deixe marcado **Iniciar com o sistema** — no AppImage isso também
+  integra o programa ao menu e copia o arquivo para um caminho estável.
+
+No primeiro uso o cliente abre **Configurar conexão**: o endereço já vem
+preenchido (`https://vbtyper.lucianovilasboas.com.br`) e você informa o token
+da API. **Testar conexão** confere antes de salvar e **Iniciar com o sistema**
+cria a entrada XDG do autostart. O token fica só na sua máquina, em
+`~/.config/vb-typer/api-token` (modo `0600`), e **nunca** é embutido no AppImage
+publicado.
+
+O token é o mesmo `api-token` do servidor: peça a quem administra a instância
+(ou, no servidor, `vb-typer-api --print-token`). O endereço pode ser trocado no
+mesmo diálogo, para instâncias self-hosted. Depois, ele fica disponível em
+**Bandeja → Configurar conexão…**.
+
 ## Uso
 
 ```bash
@@ -13,13 +35,15 @@ uv run vb-typer-desktop              # sobe o ditado (bandeja e indicador)
 uv run vb-typer-desktop --ui         # sobe e abre a interface no navegador
 uv run vb-typer-desktop --status     # estado da API, do token e dos avisos
 uv run vb-typer-desktop --self-test  # confere ambiente sem ditar
+uv run vb-typer-desktop --configure  # diálogo de URL e token (primeiro uso)
 uv run vb-typer-desktop --write-preferences   # cria o arquivo de preferências
 ```
 
 Segure **Ctrl+Super** para gravar; solte **Ctrl** ou **Super** para transcrever e
 inserir. A bandeja mostra o estado (desativado, ativo, gravando, transcrevendo) e oferece
 *Abrir configurações*, *Iniciar/Parar ditado*, o item **Perfis** — que abre o
-submenu com os perfis de texto (o vigente com `✓`) — e *Sair*.
+submenu com os perfis de texto (o vigente com `✓`) — **Configurar conexão…** e
+*Sair*.
 
 O perfil escolhido pela bandeja é gravado no backend (`default_profile`), o mesmo
 lugar onde a interface o edita — e a bandeja relê a configuração de tempos em
@@ -46,7 +70,9 @@ sem reiniciar. No Linux/X11 elas são *capturadas* com `XGrabKey`: o aplicativo 
 foco não as recebe — sem isso, `Ctrl+Alt+Tab` trocaria de aba no navegador antes
 de trocar o perfil. O atalho de gravar continua apenas observado.
 
-Antes de usar, a API precisa estar no ar e com a chave configurada:
+No cliente instalado, a URL e o token são configurados pelo diálogo do primeiro
+uso. Ao rodar a partir do código-fonte, a API local precisa estar no ar e com a
+chave configurada:
 
 ```bash
 systemctl --user status vb-typer-api
@@ -54,6 +80,10 @@ cd ../backend && uv run vb-typer-api --setup
 ```
 
 ## Rodar como serviço (autostart)
+
+> Nas versões instaladas (`.deb`/AppImage), o autostart é uma entrada **XDG** em
+> `~/.config/autostart/vb-typer.desktop`, criada pelo diálogo de configuração.
+> A seção abaixo é para rodar a partir do código-fonte, com systemd.
 
 Para o ditado subir sozinho no login, sem depender de terminal aberto:
 

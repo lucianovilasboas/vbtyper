@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 
+from vb_typer_desktop import connection, preferences
 from vb_typer_desktop.api import ApiClient, ApiError, Job
 from vb_typer_desktop.audio import (
     MAX_AUDIO_SECONDS,
@@ -612,12 +613,44 @@ class Daemon:
             return {"ok": self.set_mode(value or "")}
         if command == "profile":
             return {"ok": self.set_profile(value or "")}
-        actions = {"show": self.show_ui, "toggle": self.toggle_listener, "quit": self.shutdown}
+        actions = {
+            "show": self.show_ui,
+            "toggle": self.toggle_listener,
+            "configure": self.configure,
+            "quit": self.shutdown,
+        }
         action = actions.get(command)
         if action is None:
             return {"ok": False}
         threading.Thread(target=action, daemon=True).start()
         return {"ok": True}
+
+    def configure(self) -> bool:
+        """Troca URL/token com o diálogo, sem reiniciar o cliente.
+
+        O diálogo é bloqueante e roda numa thread do socket de controle; o
+        cliente da API só é substituído depois de salvar, e nunca no meio de
+        uma gravação ou transcrição.
+        """
+        if self.busy or self.recorder is not None:
+            self._notify_fn(
+                "VB Typer", "Aguarde a transcrição atual terminar para trocar a conexão."
+            )
+            return False
+        try:
+            result = connection.configure_interactively(self.api.base_url, self.preferences)
+        except (OSError, ValueError) as exc:
+            self._notify_fn(
+                "VB Typer — erro", f"Não foi possível salvar a conexão: {exc}", "critical"
+            )
+            return False
+        if result is None:
+            return False
+        self.api.close()
+        self.api = ApiClient(base_url=result.url)
+        self.preferences = preferences.load()
+        self._notify_fn("VB Typer", "Conexão atualizada.", "normal")
+        return True
 
     def show_ui(self) -> bool:
         try:

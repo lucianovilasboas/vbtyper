@@ -21,6 +21,7 @@ DEFAULTS = {
     "speed": 1.0,
     "sensitivity": 1.0,
     "shape": "wave",
+    "base_url": "",
 }
 MIN_SIZE, MAX_SIZE = 24, 96
 MIN_TUNING, MAX_TUNING = 0.5, 3.0
@@ -55,6 +56,8 @@ class Preferences:
     speed: float = DEFAULTS["speed"]
     sensitivity: float = DEFAULTS["sensitivity"]
     shape: str = DEFAULTS["shape"]
+    # Endereço da API escolhido no primeiro uso; vazio = padrão do ambiente.
+    base_url: str = DEFAULTS["base_url"]
 
     @property
     def shows_indicator(self) -> bool:
@@ -80,6 +83,13 @@ def _tuning(value, default: float) -> float:
     return min(MAX_TUNING, max(MIN_TUNING, float(value)))
 
 
+def _text(value, default: str) -> str:
+    """String opcional (URL da API); vazia/inválida cai no padrão."""
+    if not isinstance(value, str):
+        return default
+    return value.strip() or default
+
+
 def from_mapping(values) -> Preferences:
     """Lê preferências de um dicionário, ignorando valores inválidos."""
     if not isinstance(values, dict):
@@ -97,6 +107,7 @@ def from_mapping(values) -> Preferences:
         speed=_tuning(values.get("speed"), DEFAULTS["speed"]),
         sensitivity=_tuning(values.get("sensitivity"), DEFAULTS["sensitivity"]),
         shape=_pick(values.get("shape"), SHAPES, DEFAULTS["shape"]),
+        base_url=_text(values.get("base_url"), DEFAULTS["base_url"]),
     )
 
 
