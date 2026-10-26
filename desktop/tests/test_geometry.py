@@ -66,6 +66,12 @@ def test_window_anchor_uses_the_focused_window():
     assert WINDOW.y <= box.y < WINDOW.bottom
 
 
+def test_explicit_width_widens_the_box_without_changing_the_height():
+    box = indicator_rect("window", "bottom-center", 40, window=WINDOW, screen=SCREEN, width=200)
+    assert box is not None
+    assert box.width == 200 and box.height == 40
+
+
 def test_screen_anchor_ignores_the_window():
     box = indicator_rect("screen", "bottom-center", 40, window=WINDOW, screen=SCREEN)
     assert box is not None and box.bottom == SCREEN.bottom - 12

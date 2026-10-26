@@ -617,7 +617,12 @@ def test_shortcut_cycles_the_profile_without_changing_the_default():
     assert agent.current_profile == "revisado"
     # A troca por atalho é temporária: nada foi gravado no backend.
     assert api.patched == []
-    assert agent.state_snapshot()["profile"] == "revisado"
+    snapshot = agent.state_snapshot()
+    assert snapshot["profile"] == "revisado"
+    assert snapshot["phase"] == "profile"
+    assert snapshot["message"] == "Texto revisado"
+    assert snapshot["message_detail"] == "2/3"
+    assert snapshot["indicator"]["w"] == 200
     agent.stop_listener()
 
 
@@ -648,7 +653,10 @@ def test_default_shortcut_goes_back_to_the_configured_default():
     platform.combos.fire("profile_default")
 
     assert agent.current_profile == "email"
-    assert agent.state_snapshot()["phase"] == "profile"
+    snapshot = agent.state_snapshot()
+    assert snapshot["phase"] == "profile"
+    assert snapshot["message"] == "E-mail profissional"
+    assert snapshot["message_detail"] == "padrão"
     agent.stop_listener()
 
 

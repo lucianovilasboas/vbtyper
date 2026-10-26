@@ -286,6 +286,7 @@ class Indicator:
         self.waveform: tuple[int, ...] = ()
         self.job_phase = ""
         self.message = ""
+        self.profile_detail = ""
         self._alpha = 1.0
         self.box: tuple[int, int, int, int] | None = None
         self.position: tuple[int, int] | None = None
@@ -356,6 +357,7 @@ class Indicator:
         self.waveform = waveform_from_state(state.get("waveform"))
         self.job_phase = str(state.get("job_phase") or "")
         self.message = str(state.get("message") or "")
+        self.profile_detail = str(state.get("message_detail") or "")
         box = state.get("indicator")
         self.box = None
         if isinstance(box, dict):
@@ -464,7 +466,9 @@ class Indicator:
             self._draw_spinner(cr, width, height)
         elif self.phase == "inserted":
             self._draw_check(cr, width, height)
-        elif self.phase in ("profile", "nothing"):
+        elif self.phase == "profile":
+            self._draw_profile_badge(cr, width, height)
+        elif self.phase == "nothing":
             self._draw_centered_text(cr, width, height, self.message)
         else:
             self._draw_warning(cr, width, height)
@@ -591,36 +595,120 @@ class Indicator:
         self._draw_phase_text(cr, width, height)
 
     def _draw_phase_text(self, cr, width, height) -> None:
-        """Frase minúscula da fase, centralizada sobre o anel do spinner."""
+        """Frase da fase, centralizada sobre o anel do spinner."""
         self._draw_centered_text(cr, width, height, processing_label(self.job_phase))
 
     def _draw_centered_text(self, cr, width, height, text: str) -> None:
-        """Texto centralizado, contornado para ficar legível em qualquer fundo."""
+        """Texto centralizado e legível sobre qualquer fundo.
+
+        A frase é o principal sinal do "processando": fica maior que antes e com
+        contorno mais forte, sem caixa atrás (o anel do spinner é o fundo).
+        """
         import cairo
 
         if not text:
             return
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-        size = max(6.5, min(9.0, height * 0.17))
+        size = max(8.5, min(11.0, height * 0.24))
         cr.set_font_size(size)
         extents = cr.text_extents(text)
         max_width = width - 8
         if extents.width > max_width:
-            size = max(6.0, size * max_width / extents.width)
+            size = max(7.0, size * max_width / extents.width)
             cr.set_font_size(size)
             extents = cr.text_extents(text)
         x = (width - extents.width) / 2 - extents.x_bearing
         y = height / 2 - extents.height / 2 - extents.y_bearing
-        # Contorno escuro + preenchimento claro: legível tanto sobre editor
-        # escuro quanto sobre fundo claro, sem precisar de caixa atrás do texto.
         cr.move_to(x, y)
         cr.text_path(text)
         cr.set_line_join(cairo.LINE_JOIN_ROUND)
-        cr.set_line_width(max(1.4, size * 0.26))
+        cr.set_line_width(max(1.6, size * 0.26))
         cr.set_source_rgba(SHADOW[0], SHADOW[1], SHADOW[2], SHADOW[3] * self._alpha)
         cr.stroke_preserve()
         cr.set_source_rgba(1.0, 0.96, 0.92, 0.95 * self._alpha)
         cr.fill()
+
+    def _draw_profile_badge(self, cr, width, height) -> None:
+        """Troca de perfil: nome em negrito sobre uma pílula, com a posição abaixo.
+
+        A pílula dá contraste garantido em qualquer fundo e só aparece no flash
+        da troca (1,6 s); o resto do indicador continua transparente.
+        """
+        import cairo
+
+        name = (self.message or "").strip()
+        if not name:
+            return
+        detail = (self.profile_detail or "").strip()
+        two_lines = bool(detail) and height >= 34
+        margin = max(3.0, height * 0.08)
+        pad_x = max(8.0, height * 0.20)
+        pad_y = max(3.0, height * 0.08)
+        gap = max(2.0, height * 0.05)
+        name_size = max(9.0, min(14.0, height * 0.35))
+        detail_size = max(6.5, min(9.5, height * 0.21))
+        max_width = width - 2 * margin - 2 * pad_x
+
+        def measure(text: str, size: float, weight) -> cairo.TextExtents:
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, weight)
+            cr.set_font_size(size)
+            return cr.text_extents(text)
+
+        def fit(text: str, size: float, weight, floor: float):
+            extents = measure(text, size, weight)
+            if extents.width > max_width and extents.width > 0:
+                size = max(floor, size * max_width / extents.width)
+                extents = measure(text, size, weight)
+            if extents.width > max_width:
+                while text and measure(text, size, weight).width > max_width:
+                    text = text[:-1]
+                text = text.rstrip() + "…"
+                extents = measure(text, size, weight)
+            return text, size, extents
+
+        if two_lines:
+            name, name_size, name_ext = fit(name, name_size, cairo.FONT_WEIGHT_BOLD, 8.0)
+            detail, detail_size, detail_ext = fit(
+                detail, detail_size, cairo.FONT_WEIGHT_NORMAL, 6.0
+            )
+            inner_w = max(name_ext.width, detail_ext.width)
+            inner_h = name_ext.height + gap + detail_ext.height
+        else:
+            label = name if not detail else f"{name} · {detail}"
+            label, name_size, label_ext = fit(label, name_size, cairo.FONT_WEIGHT_BOLD, 8.0)
+            inner_w = label_ext.width
+            inner_h = label_ext.height
+
+        pill_w = min(width - 2 * margin, inner_w + 2 * pad_x)
+        pill_h = min(height - 2 * margin, inner_h + 2 * pad_y)
+        x0 = (width - pill_w) / 2
+        y0 = (height - pill_h) / 2
+        _rounded(cr, x0, y0, pill_w, pill_h, pill_h * 0.35)
+        cr.set_source_rgba(0.04, 0.02, 0.10, 0.78 * self._alpha)
+        cr.fill_preserve()
+        cr.set_source_rgba(LILAC[0], LILAC[1], LILAC[2], 0.35 * self._alpha)
+        cr.set_line_width(1.0)
+        cr.stroke()
+
+        def draw(text: str, size: float, weight, colour, baseline: float) -> None:
+            cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, weight)
+            cr.set_font_size(size)
+            extents = cr.text_extents(text)
+            x = (width - extents.width) / 2 - extents.x_bearing
+            cr.move_to(x, baseline)
+            cr.text_path(text)
+            cr.set_source_rgba(*colour, 0.96 * self._alpha)
+            cr.fill()
+
+        if two_lines:
+            name_baseline = y0 + pad_y - name_ext.y_bearing
+            draw(name, name_size, cairo.FONT_WEIGHT_BOLD, (1.0, 0.98, 0.96), name_baseline)
+            name_bottom = name_baseline + name_ext.height + name_ext.y_bearing
+            detail_baseline = name_bottom + gap - detail_ext.y_bearing
+            draw(detail, detail_size, cairo.FONT_WEIGHT_NORMAL, LILAC, detail_baseline)
+        else:
+            baseline = y0 + (pill_h - label_ext.height) / 2 - label_ext.y_bearing
+            draw(label, name_size, cairo.FONT_WEIGHT_BOLD, (1.0, 0.98, 0.96), baseline)
 
     def _draw_check(self, cr, width, height) -> None:
         cr.move_to(width * 0.38, height * 0.52)

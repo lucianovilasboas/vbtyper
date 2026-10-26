@@ -36,8 +36,9 @@ apagados na interface também aparecem/desaparecem sem reiniciar o cliente.
 
 A troca é **temporária**: vale para os próximos ditados e não altera o perfil
 padrão gravado no backend — o atalho do padrão descarta o ciclo, e reiniciar o
-cliente também. O indicador mostra o nome do perfil por um instante. Escolher um
-perfil pela bandeja (ou pela interface) limpa o ciclo.
+cliente também. O indicador mostra uma **pílula com o nome em destaque** e a
+posição na lista por ~1,6 s. Escolher um perfil pela bandeja (ou pela interface)
+limpa o ciclo.
 
 As combinações são editáveis em **Configurações › Atalhos** na interface web
 (ficam no backend, não neste arquivo) e o cliente as aplica em até 10 segundos,
@@ -101,7 +102,7 @@ janela em foco — no terminal, cai junto do prompt onde o texto vai aparecer:
 | Fase | Desenho |
 |---|---|
 | Gravando | onda colorida, como o medidor da tela Ditar (o mesmo gradiente) |
-| Transcrevendo | anel fino girando ao fundo + frase minúscula “Transcrevendo…” (e “Aplicando perfil…” quando há segunda chamada) |
+| Transcrevendo | anel fino girando ao fundo + frase legível “Transcrevendo…” (e “Aplicando perfil…” quando há segunda chamada) |
 | Inserido | ✓ verde, ~1 s |
 | Erro | ! vermelho, ~3 s |
 
@@ -188,9 +189,14 @@ VB_TYPER_INDICATOR_DEBUG=/tmp/indicador.log uv run vb-typer-desktop
   aumenta devagar, e ignora silêncio/chiado. `sensitivity` multiplica o resultado.
 - **O "processando" é um anel girando com a fase escrita por cima.** A barra que
   deslizava lembrava a onda da gravação; um anel fino na borda (1,1 volta/s, a
-  ~50 fps) fica ao fundo, e uma frase minúscula no centro diz o que o backend está
+  ~50 fps) fica ao fundo, e uma frase legível no centro diz o que o backend está
   fazendo: “Transcrevendo…” ou “Aplicando perfil…” (só quando há a segunda
   chamada). O texto tem contorno escuro para não sumir em fundo claro.
+- **A troca de perfil é uma pílula.** O nome vai em negrito (~14 px) sobre um
+  fundo escuro translúcido, com a posição (“3/10” ou “padrão”) abaixo; a caixa do
+  indicador fica mais larga (200 px) só nessa fase, e o flash dura 1,6 s. A
+  pílula garante contraste em qualquer fundo; o resto do indicador continua
+  transparente.
 - **Sobe por constante de tempo, desce em linha reta.** A barra reage à voz em
   ~35 ms e volta a uma taxa fixa de 350%/s, zerando abaixo de 4%. O retorno
   linear é o ponto: uma exponencial deixa uma cauda longa nos últimos por centos,
