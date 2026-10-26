@@ -139,6 +139,9 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     com `XGrabKey` (o aplicativo não as vê; sem o grab, `Ctrl+Alt+Tab` trocaria de
     aba); o atalho de gravar (Ctrl+Super) continua só observado, sem grab. A
     gramática é validada no backend (`domain/hotkeys.py`) e recusa Ctrl+Super juntos.
+    O flash da troca é uma pílula escura translúcida com o nome em negrito (~14 px)
+    e a posição abaixo; a caixa do indicador fica mais larga (200 px) só nessa fase,
+    dura 1,6 s e ancora na janela ativa mesmo antes do primeiro ditado.
 19. Os perfis de texto vivem todos no banco (`profiles`). Os dez padrões são
     semeados **uma única vez** na primeira inicialização
     (`app_settings.profiles_seeded`) a partir de `domain/profiles.py`; depois são

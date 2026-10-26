@@ -66,13 +66,16 @@ def indicator_rect(
     window: Rect | None = None,
     screen: Rect | None = None,
     pointer: tuple[int, int] | None = None,
+    width: int | None = None,
 ) -> Rect | None:
     """Caixa do indicador, ou ``None`` quando não há onde ancorar.
 
     ``window`` é ``None`` quando não há janela em foco — por exemplo em tela
-    cheia, onde o indicador não deve aparecer.
+    cheia, onde o indicador não deve aparecer. ``width`` permite uma caixa mais
+    larga que o padrão (o flash de perfil usa isso para caber o nome).
     """
-    width, height = indicator_size(size)
+    default_width, height = indicator_size(size)
+    width = width or default_width
     if anchor == "pointer" and pointer is not None:
         box = Rect(pointer[0] - width // 2, pointer[1] + POINTER_GAP, width, height)
     elif anchor == "screen" and screen is not None:

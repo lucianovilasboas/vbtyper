@@ -36,7 +36,9 @@ JOB_TIMEOUT_S = 180.0
 # sincronia com o que for mudado na interface.
 OPTIONS_REFRESH_S = 10.0
 # Quanto tempo a pílula do perfil fica no indicador depois do atalho.
-PROFILE_FLASH_S = 1.2
+PROFILE_FLASH_S = 1.6
+# A pílula do perfil é mais larga que o painel normal para caber o nome.
+PROFILE_BADGE_WIDTH = 200
 # Aviso de que o ditado repetia o que já estava escrito (nada é inserido).
 NOTHING_FLASH_S = 2.0
 MODES = ("literal", "smart")
@@ -100,6 +102,7 @@ class Daemon:
         self._flash_until = 0.0
         self._flash_phase = "idle"
         self._flash_message = ""
+        self._flash_detail = ""
         self._indicator_cache: tuple[float, str, Rect | None] = (0.0, "idle", None)
 
     # ------------------------------------------------------------------ estado
@@ -122,10 +125,11 @@ class Daemon:
     def _default_open_ui(self) -> bool:
         return open_ui(self.api.base_url)
 
-    def _flash(self, phase: str, message: str, seconds: float) -> None:
-        """Marca um estado passageiro (inserido/erro) para o indicador mostrar."""
+    def _flash(self, phase: str, message: str, seconds: float, detail: str = "") -> None:
+        """Marca um estado passageiro (inserido/erro/perfil) para o indicador."""
         self._flash_phase = phase
         self._flash_message = message
+        self._flash_detail = detail
         self._flash_until = time.monotonic() + seconds
 
     def _phase(self) -> str:
@@ -160,7 +164,12 @@ class Daemon:
         if cached_phase == phase and now - cached_at < INDICATOR_REFRESH_S:
             return cached_box
         anchor = self.preferences.anchor
-        window = self.platform.window_rect(self.target_window) if anchor == "window" else None
+        target = self.target_window
+        if anchor == "window" and target is None and phase == "profile":
+            # A troca de perfil pode acontecer antes do primeiro ditado: ancora
+            # na janela ativa para o nome aparecer de imediato.
+            target = self.platform.active_window()
+        window = self.platform.window_rect(target) if anchor == "window" else None
         pointer = self.platform.pointer_position() if anchor == "pointer" else None
         box = indicator_rect(
             anchor,
@@ -169,6 +178,7 @@ class Daemon:
             window=window,
             screen=self.platform.screen_rect(),
             pointer=pointer,
+            width=PROFILE_BADGE_WIDTH if phase == "profile" else None,
         )
         self._indicator_cache = (now, phase, box)
         return box
@@ -195,6 +205,8 @@ class Daemon:
                 snapshot["waveform"] = get_waveform()
         if phase in ("inserted", "error", "profile", "nothing") and self._flash_message:
             snapshot["message"] = self._flash_message
+            if phase == "profile" and self._flash_detail:
+                snapshot["message_detail"] = self._flash_detail
         box = self._indicator_box(phase)
         if box is not None:
             snapshot["indicator"] = {
@@ -337,7 +349,7 @@ class Daemon:
             self.profile_override = next_profile(slugs, base, step)
             position = slugs.index(self.profile_override) + 1
             name = self.profile_name(self.profile_override)
-            self._flash("profile", f"{name} ({position}/{len(slugs)})", PROFILE_FLASH_S)
+            self._flash("profile", name, PROFILE_FLASH_S, detail=f"{position}/{len(slugs)}")
         return True
 
     def reset_profile(self) -> bool:
@@ -347,7 +359,7 @@ class Daemon:
                 return False
             name = self.profile_name(self.profile_current) if self.profile_current else "padrão"
             self.profile_override = ""
-            self._flash("profile", f"{name} (padrão)", PROFILE_FLASH_S)
+            self._flash("profile", name, PROFILE_FLASH_S, detail="padrão")
         return True
 
     def on_combo(self, action: str) -> None:
