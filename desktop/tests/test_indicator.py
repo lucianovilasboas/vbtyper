@@ -328,3 +328,15 @@ def test_processing_label_follows_the_backend_phase(indicator):
     assert indicator.processing_label("rendering") == "Aplicando perfil…"
     assert indicator.processing_label("transcribing") == "Transcrevendo…"
     assert indicator.processing_label("") == "Transcrevendo…"
+
+
+def test_profile_pill_has_a_fixed_size_independent_of_the_text(indicator):
+    assert indicator.profile_pill_box(200, 40) == (8.0, 4.0, 184.0, 32.0)
+    # A função não recebe o nome: o tamanho é o mesmo para qualquer perfil.
+    assert indicator.profile_pill_box(200, 40) == indicator.profile_pill_box(200, 40)
+
+
+def test_profile_pill_shrinks_with_a_small_panel(indicator):
+    x, y, width, height = indicator.profile_pill_box(72, 24)
+    assert (width, height) == (64.0, 16.0)
+    assert (x, y) == (4.0, 4.0)

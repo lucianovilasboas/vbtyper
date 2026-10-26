@@ -52,6 +52,10 @@ WAVE_GAIN_RELEASE_S = 0.90  # fala baixa: sobe devagar, sem bombear
 # Spinner da fase "transcrevendo": arco girando no lugar da barra que deslizava.
 SPINNER_TURNS_PER_SECOND = 1.1
 SPINNER_ARC = math.pi * 0.55
+# Pílula da troca de perfil: tamanho fixo (não muda com o nome, para não pular).
+PROFILE_PILL_WIDTH = 184.0
+PROFILE_PILL_HEIGHT = 32.0
+PROFILE_PILL_MARGIN = 4.0
 DEBUG_PATH = os.environ.get("VB_TYPER_INDICATOR_DEBUG")
 
 # A barra de nível usa o roxo de destaque do app (o mesmo `accent` do 1.x).
@@ -230,6 +234,17 @@ def spinner_angle(now: float) -> float:
 def processing_label(job_phase: str) -> str:
     """Frase da fase de processamento, conforme o que o backend está fazendo."""
     return "Aplicando perfil…" if job_phase == "rendering" else "Transcrevendo…"
+
+
+def profile_pill_box(width: float, height: float) -> tuple[float, float, float, float]:
+    """Caixa fixa da pílula de perfil, centrada no painel.
+
+    O tamanho não depende do nome: trocar de perfil muda só o texto, e a pílula
+    permanece exatamente no mesmo lugar. Em painéis pequenos ela encolhe junto.
+    """
+    pill_w = min(PROFILE_PILL_WIDTH, max(0.0, width - 2 * PROFILE_PILL_MARGIN))
+    pill_h = min(PROFILE_PILL_HEIGHT, max(0.0, height - 2 * PROFILE_PILL_MARGIN))
+    return ((width - pill_w) / 2, (height - pill_h) / 2, pill_w, pill_h)
 
 
 def _wave_gradient(cairo, width: float, alpha: float):
@@ -581,14 +596,14 @@ class Indicator:
 
         cr.new_path()
         cr.arc(centre_x, centre_y, radius, 0, 2 * math.pi)
-        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.10 * self._alpha)
+        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.08 * self._alpha)
         cr.set_line_width(line_width)
         cr.stroke()
 
         start = spinner_angle(time.monotonic())
         cr.new_path()
         cr.arc(centre_x, centre_y, radius, start, start + SPINNER_ARC)
-        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.45 * self._alpha)
+        cr.set_source_rgba(ORANGE[0], ORANGE[1], ORANGE[2], 0.35 * self._alpha)
         cr.set_line_width(line_width)
         cr.stroke()
 
@@ -608,13 +623,13 @@ class Indicator:
 
         if not text:
             return
-        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-        size = max(8.5, min(11.0, height * 0.24))
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
+        size = max(9.5, min(11.5, height * 0.26))
         cr.set_font_size(size)
         extents = cr.text_extents(text)
         max_width = width - 8
         if extents.width > max_width:
-            size = max(7.0, size * max_width / extents.width)
+            size = max(7.5, size * max_width / extents.width)
             cr.set_font_size(size)
             extents = cr.text_extents(text)
         x = (width - extents.width) / 2 - extents.x_bearing
@@ -622,17 +637,18 @@ class Indicator:
         cr.move_to(x, y)
         cr.text_path(text)
         cr.set_line_join(cairo.LINE_JOIN_ROUND)
-        cr.set_line_width(max(1.6, size * 0.26))
+        cr.set_line_width(max(1.8, size * 0.26))
         cr.set_source_rgba(SHADOW[0], SHADOW[1], SHADOW[2], SHADOW[3] * self._alpha)
         cr.stroke_preserve()
         cr.set_source_rgba(1.0, 0.96, 0.92, 0.95 * self._alpha)
         cr.fill()
 
     def _draw_profile_badge(self, cr, width, height) -> None:
-        """Troca de perfil: nome em negrito sobre uma pílula, com a posição abaixo.
+        """Troca de perfil: pílula de tamanho fixo com nome e posição.
 
-        A pílula dá contraste garantido em qualquer fundo e só aparece no flash
-        da troca (1,6 s); o resto do indicador continua transparente.
+        A pílula não depende do texto: trocar de perfil não move nem redimensiona
+        nada. O nome encolhe (e, no limite, ganha reticências) para caber; o resto
+        do indicador continua transparente.
         """
         import cairo
 
@@ -640,14 +656,15 @@ class Indicator:
         if not name:
             return
         detail = (self.profile_detail or "").strip()
-        two_lines = bool(detail) and height >= 34
-        margin = max(3.0, height * 0.08)
-        pad_x = max(8.0, height * 0.20)
-        pad_y = max(3.0, height * 0.08)
-        gap = max(2.0, height * 0.05)
-        name_size = max(9.0, min(14.0, height * 0.35))
-        detail_size = max(6.5, min(9.5, height * 0.21))
-        max_width = width - 2 * margin - 2 * pad_x
+        x0, y0, pill_w, pill_h = profile_pill_box(width, height)
+        if pill_w <= 0 or pill_h <= 0:
+            return
+        two_lines = bool(detail) and pill_h >= 28
+        pad = min(14.0, pill_w * 0.08)
+        gap = max(1.5, pill_h * 0.06)
+        name_size = max(8.5, min(12.5, height * 0.31))
+        detail_size = max(6.5, min(8.0, height * 0.20))
+        max_width = pill_w - 2 * pad
 
         def measure(text: str, size: float, weight) -> cairo.TextExtents:
             cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, weight)
@@ -668,25 +685,35 @@ class Indicator:
 
         if two_lines:
             name, name_size, name_ext = fit(name, name_size, cairo.FONT_WEIGHT_BOLD, 8.0)
+            detail = f"• {detail}"
             detail, detail_size, detail_ext = fit(
                 detail, detail_size, cairo.FONT_WEIGHT_NORMAL, 6.0
             )
-            inner_w = max(name_ext.width, detail_ext.width)
-            inner_h = name_ext.height + gap + detail_ext.height
+            block_h = name_ext.height + gap + detail_ext.height
         else:
             label = name if not detail else f"{name} · {detail}"
             label, name_size, label_ext = fit(label, name_size, cairo.FONT_WEIGHT_BOLD, 8.0)
-            inner_w = label_ext.width
-            inner_h = label_ext.height
+            block_h = label_ext.height
 
-        pill_w = min(width - 2 * margin, inner_w + 2 * pad_x)
-        pill_h = min(height - 2 * margin, inner_h + 2 * pad_y)
-        x0 = (width - pill_w) / 2
-        y0 = (height - pill_h) / 2
-        _rounded(cr, x0, y0, pill_w, pill_h, pill_h * 0.35)
-        cr.set_source_rgba(0.04, 0.02, 0.10, 0.78 * self._alpha)
+        radius = pill_h / 2
+        # Halo lilás bem sutil: a pílula flutua sem sujar o fundo.
+        _rounded(cr, x0, y0, pill_w, pill_h, radius)
+        cr.set_source_rgba(PURPLE[0], PURPLE[1], PURPLE[2], 0.12 * self._alpha)
+        cr.set_line_width(8.0)
+        cr.stroke()
+        # Corpo com gradiente escuro (roxo no topo, quase preto embaixo).
+        gradient = cairo.LinearGradient(0, y0, 0, y0 + pill_h)
+        gradient.add_color_stop_rgba(0.0, 0.16, 0.11, 0.28, 0.94 * self._alpha)
+        gradient.add_color_stop_rgba(1.0, 0.05, 0.03, 0.10, 0.96 * self._alpha)
+        _rounded(cr, x0, y0, pill_w, pill_h, radius)
+        cr.set_source(gradient)
         cr.fill_preserve()
-        cr.set_source_rgba(LILAC[0], LILAC[1], LILAC[2], 0.35 * self._alpha)
+        cr.set_source_rgba(LILAC[0], LILAC[1], LILAC[2], 0.45 * self._alpha)
+        cr.set_line_width(1.0)
+        cr.stroke()
+        # Realce interno de 1 px (efeito de vidro).
+        _rounded(cr, x0 + 1, y0 + 1, pill_w - 2, pill_h - 2, max(1.0, radius - 1))
+        cr.set_source_rgba(1.0, 1.0, 1.0, 0.08 * self._alpha)
         cr.set_line_width(1.0)
         cr.stroke()
 
@@ -697,18 +724,18 @@ class Indicator:
             x = (width - extents.width) / 2 - extents.x_bearing
             cr.move_to(x, baseline)
             cr.text_path(text)
-            cr.set_source_rgba(*colour, 0.96 * self._alpha)
+            cr.set_source_rgba(*colour, 0.98 * self._alpha)
             cr.fill()
 
+        top = y0 + (pill_h - block_h) / 2
         if two_lines:
-            name_baseline = y0 + pad_y - name_ext.y_bearing
-            draw(name, name_size, cairo.FONT_WEIGHT_BOLD, (1.0, 0.98, 0.96), name_baseline)
-            name_bottom = name_baseline + name_ext.height + name_ext.y_bearing
-            detail_baseline = name_bottom + gap - detail_ext.y_bearing
+            name_baseline = top - name_ext.y_bearing
+            draw(name, name_size, cairo.FONT_WEIGHT_BOLD, (0.99, 0.98, 1.0), name_baseline)
+            detail_baseline = top + name_ext.height + gap - detail_ext.y_bearing
             draw(detail, detail_size, cairo.FONT_WEIGHT_NORMAL, LILAC, detail_baseline)
         else:
-            baseline = y0 + (pill_h - label_ext.height) / 2 - label_ext.y_bearing
-            draw(label, name_size, cairo.FONT_WEIGHT_BOLD, (1.0, 0.98, 0.96), baseline)
+            baseline = top - label_ext.y_bearing
+            draw(label, name_size, cairo.FONT_WEIGHT_BOLD, (0.99, 0.98, 1.0), baseline)
 
     def _draw_check(self, cr, width, height) -> None:
         cr.move_to(width * 0.38, height * 0.52)
