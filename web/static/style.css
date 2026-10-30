@@ -57,9 +57,12 @@ button { cursor: pointer; }
   top: 0;
   z-index: 5;
   height: 68px;
-  display: flex;
+  /* Três colunas: marca, navegação central, controles. Com o `rightbar`
+     absoluto a navegação passava por cima dos controles quando a janela
+     encolhia (a faixa de ~720 a ~950px ficava inutilizável). */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: center;
   gap: 14px;
   padding: 0 25px;
   border-bottom: 1px solid var(--line);
@@ -67,11 +70,11 @@ button { cursor: pointer; }
   backdrop-filter: blur(14px);
 }
 
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.02em; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: -0.02em; justify-self: start; }
 .brand img { width: 27px; height: 27px; display: block; }
 .brand span { font-size: 15px; }
 
-.nav { display: flex; gap: 4px; padding: 4px; background: var(--panel-2); border-radius: 12px; }
+.nav { display: flex; gap: 4px; padding: 4px; background: var(--panel-2); border-radius: 12px; justify-self: center; }
 .nav button {
   border: 0;
   background: transparent;
@@ -81,7 +84,7 @@ button { cursor: pointer; }
 }
 .nav button[aria-selected="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
 
-.rightbar { position: absolute; right: 22px; display: flex; align-items: center; gap: 10px; }
+.rightbar { display: flex; align-items: center; gap: 10px; justify-self: end; }
 .theme-switch { display: flex; gap: 2px; padding: 3px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
 .theme-switch button {
   border: 0;
@@ -249,7 +252,8 @@ details.raw p { margin: 6px 0 0; }
 .setting-row:first-of-type { border-top: 0; }
 .setting-row > div > span, .field-row > div > span { display: block; color: var(--muted); font-size: 0.82rem; }
 .setting-row input[type="text"], .setting-row select, .field-row input[type="text"], .field-row select { border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 8px 11px; min-width: 210px; }
-.field-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.field-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.field-row > div:first-child { flex: 1 1 auto; }
 .field-row:first-child { border-top: 0; }
 
 .theme-options { display: flex; gap: 14px; margin-top: 4px; }
@@ -282,6 +286,8 @@ details.raw p { margin: 6px 0 0; }
 .mini-box i { display: block; height: 5px; border-radius: 3px; background: var(--preview-accent); opacity: 0.55; }
 .theme-caption { display: block; margin-top: 6px; color: var(--muted); font-size: 0.78rem; }
 .theme-help { color: var(--muted); font-size: 0.82rem; }
+/* Preço/modelo do select em linha própria: o controle nativo truncava. */
+.field-hint { flex: 1 1 100%; text-align: right; color: var(--muted); font-size: 0.78rem; }
 .hotkey { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
 .key { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 7px; padding: 3px 9px; background: var(--panel-2); font-size: 0.8rem; font-weight: 600; }
 select.key { padding: 3px 6px; color: var(--ink); }
@@ -455,15 +461,40 @@ textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transp
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2) { border-right: 0; }
   .metric:nth-child(1), .metric:nth-child(2) { border-bottom: 1px solid var(--line); }
-  .settings-layout { grid-template-columns: 1fr; }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  /* Sem min-width: 0 o conteúdo largo (selects de 210px, atalhos) define a
+     coluna do grid e a tela inteira estoura no celular. */
+  .settings-layout > * { min-width: 0; }
   .side { position: static; display: flex; gap: 4px; overflow-x: auto; }
 }
 
+/* Entre 720 e 860px a navegação central encostava nos controles da direita
+   (o seletor de tema cobria o botão Configurações). */
+@media (max-width: 860px) {
+  .topbar {
+    display: flex;
+    height: auto;
+    min-height: 60px;
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .rightbar { margin-left: auto; }
+  /* Alvos de toque confortáveis em tablet e celular: 28px serve ao mouse,
+     não ao dedo. */
+  .profile-row button { padding: 9px 12px; font-size: 0.8rem; min-height: 40px; }
+  .nav button { min-height: 40px; }
+  .theme-switch button { min-height: 36px; min-width: 34px; }
+  .key { padding: 6px 10px; }
+  .hotkey-capture { min-height: 40px; }
+  #view-settings select,
+  #view-settings input[type="text"] { min-height: 42px; }
+}
+
 @media (max-width: 720px) {
-  .topbar { height: auto; min-height: 60px; padding: 8px 12px; flex-wrap: wrap; justify-content: flex-start; }
-  .rightbar { position: static; margin-left: auto; }
   .app { padding: 16px; }
-  .nav button { padding: 8px 10px; font-size: 0.8rem; }
+  .nav { max-width: 100%; min-width: 0; overflow-x: auto; }
+  .nav button { padding: 8px 10px; font-size: 0.8rem; white-space: nowrap; }
   .theme-options { flex-wrap: wrap; }
   .metrics { grid-template-columns: 1fr; }
   .metric { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -501,4 +532,26 @@ textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transp
   }
   .history-table .text-cell { max-width: none; }
   .history-table .text { -webkit-line-clamp: 3; }
+
+  /* Configurações no celular: rótulo em cima, controle embaixo, ambos com a
+     largura da coluna. Sem isso, o select de 210px empurrava a página toda. */
+  .side { padding: 6px; flex-wrap: wrap; overflow-x: visible; }
+  .side-item { width: auto; white-space: nowrap; flex: 0 0 auto; }
+  .settings-card { padding: 14px 16px; }
+  .setting-row,
+  .field-row { flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+  .setting-row > div:first-child,
+  .field-row > div:first-child { flex: 1 1 100%; }
+  .setting-row input[type="text"],
+  .setting-row select,
+  .field-row input[type="text"],
+  .field-row select { min-width: 0; width: 100%; max-width: 100%; }
+  .hotkey-capture { min-width: 0; width: 100%; }
+  .theme-options { gap: 10px; }
+  .theme-option { flex: 1 1 92px; }
+  .theme-preview { width: 100%; min-width: 92px; }
+  .profile-row { align-items: flex-start; gap: 12px; }
+  .profile-row .actions { flex-wrap: wrap; gap: 8px; }
+  .profile-options { gap: 10px; }
+  .field-hint { text-align: left; }
 }

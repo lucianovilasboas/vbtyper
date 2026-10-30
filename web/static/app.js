@@ -613,6 +613,18 @@ function modelLabel(name) {
   return `${name} — ${priceFormat.format(rates[0])} / ${priceFormat.format(rates[1])} por 1M`;
 }
 
+/** Preço do modelo escolhido, fora do `<select>`: no celular o rótulo longo
+ *  era truncado pelo controle nativo e o valor ficava ilegível. */
+function renderSmartModelHint() {
+  const hint = $("smart-model-hint");
+  const select = $("smart-model");
+  if (!hint || !select) return;
+  const rates = (state.settings.text_prices || {})[select.value];
+  hint.textContent = rates
+    ? `${priceFormat.format(rates[0])} entrada / ${priceFormat.format(rates[1])} saída por 1M tokens`
+    : "";
+}
+
 /** Modelo de texto: o global (Configurações) e o override por perfil (editor). */
 function renderSmartModelSelects() {
   const models = state.settings.allowed_smart_models || [];
@@ -622,10 +634,11 @@ function renderSmartModelSelects() {
     for (const name of models) {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = modelLabel(name);
+      option.textContent = name;
       settingsSelect.append(option);
     }
     settingsSelect.value = state.settings.smart_model || models[0] || "";
+    renderSmartModelHint();
   }
 
   const profileSelect = $("profile-model");
@@ -1874,9 +1887,10 @@ function bindEvents() {
     renderProfilesList();
     state.loaded.delete("history");
   });
-  $("smart-model").addEventListener("change", () =>
-    saveSetting({ smart_model: $("smart-model").value })
-  );
+  $("smart-model").addEventListener("change", () => {
+    renderSmartModelHint();
+    return saveSetting({ smart_model: $("smart-model").value });
+  });
   $("profile-new").addEventListener("click", () => openProfileEditor(null));
   $("profile-item-add").addEventListener("click", addProfileItem);
   $("profile-item-input").addEventListener("keydown", (event) => {
