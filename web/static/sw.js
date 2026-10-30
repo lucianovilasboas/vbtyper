@@ -7,7 +7,7 @@
 //
 // `/api/*` nunca é interceptado: dados e credenciais não vão para o cache.
 
-const CACHE = "vb-typer-v1";
+const CACHE = "vb-typer-v2-brand-intro";
 
 const SHELL = [
   "/",
@@ -18,10 +18,13 @@ const SHELL = [
   "/static/recorder.js",
   "/static/wave.js",
   "/static/style.css",
+  "/static/brand-intro.js",
+  "/static/brand-intro.css",
   "/static/logo.png",
   "/static/favicon.png",
   "/static/icon-192.png",
   "/static/icon-512.png",
+  "/static/icon-maskable-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -37,7 +40,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys
+        .filter((key) => key.startsWith("vb-typer-") && key !== CACHE)
+        .map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });

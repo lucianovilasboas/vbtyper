@@ -1,0 +1,95 @@
+/* One short, decorative splash, never a loading gate. Original PNG unchanged. */
+:root { --brand-intro-ready: 1; }
+.brand-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: var(--bg, #fafafd);
+  color: var(--ink, #202126);
+  pointer-events: none;
+  /* CSS independently hides it even if JS cleanup fails. */
+  animation: brand-intro-exit 1800ms linear both;
+}
+.brand-intro__content { text-align: center; padding: 24px; animation: brand-intro-content-in 900ms cubic-bezier(.2, .7, .2, 1) both; }
+.brand-intro__mark { position: relative; width: min(224px, 52vw); aspect-ratio: 1; margin: 0 auto 18px; }
+.brand-intro__mark::before {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  background: radial-gradient(ellipse, rgb(145 78 245 / 13%), transparent 66%);
+}
+.brand-intro__mark img, .brand-intro__mark svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.brand-intro__mark img { object-fit: contain; }
+.brand-intro__mark svg { overflow: visible; }
+.brand-intro__ripple {
+  stroke: #f7eaff;
+  stroke-width: .65;
+  filter: drop-shadow(0 0 1.5px #8635eb);
+  animation: brand-intro-ripple 760ms ease-out both;
+  animation-delay: var(--delay);
+}
+.brand-intro__stone {
+  fill: #e9d5ff;
+  stroke: #6c29c4;
+  stroke-width: .6;
+  filter: drop-shadow(0 0 2px #b66cff);
+  animation: brand-intro-skip 1260ms ease-in-out both;
+}
+.brand-intro__title {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -.04em;
+  animation: brand-intro-name-in 460ms ease-out 560ms both;
+}
+.brand-intro__caption {
+  margin-top: 8px;
+  color: var(--muted, #73747e);
+  font-size: 14px;
+  animation: brand-intro-name-in 460ms ease-out 700ms both;
+}
+.brand-intro__skip {
+  position: absolute;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  pointer-events: auto;
+  border: 1px solid var(--line, #e5e5ea);
+  border-radius: 999px;
+  background: var(--panel, #fff);
+  color: var(--muted, #73747e);
+  padding: 10px 18px;
+  font: inherit;
+}
+.brand-intro__skip:focus-visible { outline: 2px solid var(--accent, #7839e8); outline-offset: 4px; }
+@keyframes brand-intro-exit {
+  0%, 83% { opacity: 1; visibility: visible; }
+  100% { opacity: 0; visibility: hidden; }
+}
+@keyframes brand-intro-ripple {
+  0% { opacity: 0; transform: scale(.25); }
+  18% { opacity: .95; }
+  100% { opacity: 0; transform: scale(1.18); }
+}
+@keyframes brand-intro-skip {
+  0% { opacity: 0; transform: translate(30px, 92px) rotate(-25deg); }
+  12% { opacity: 1; transform: translate(44px, 83px) rotate(0deg); }
+  30% { transform: translate(56px, 64px) rotate(28deg); }
+  46% { transform: translate(66px, 60px) rotate(0deg); }
+  62% { transform: translate(78px, 52px) rotate(-22deg); }
+  78% { opacity: 1; transform: translate(86px, 48px) rotate(0deg) scale(.62); }
+  100% { opacity: 0; transform: translate(86px, 48px) scale(.28); }
+}
+@keyframes brand-intro-content-in {
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes brand-intro-name-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+/* Also applies if the preference changes during playback, even without JS. */
+@media (prefers-reduced-motion: reduce) {
+  .brand-intro { display: none; }
+  .brand-intro, .brand-intro * { animation: none !important; }
+}

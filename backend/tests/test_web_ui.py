@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 import pytest_asyncio
@@ -106,3 +108,23 @@ async def test_manifest_is_served_with_the_right_type(web_client):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/manifest+json")
     assert response.json()["name"] == "VB Typer"
+
+
+async def test_real_brand_intro_shell_is_served(web_settings):
+    """Exercise real assets through the backend, not the browser's preview server."""
+    root = Path(__file__).resolve().parents[2] / "web"
+    application = create_app(web_settings.model_copy(update={"web_dir": root}))
+    async with LifespanManager(application):
+        transport = httpx.ASGITransport(app=application)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/")
+            assert response.status_code == 200
+            assert '<script type="module" src="/static/brand-intro.js">' in response.text
+            assert '<link rel="stylesheet" href="/static/brand-intro.css">' in response.text
+            for name in ("brand-intro.js", "brand-intro.css", "icon-maskable-512.png"):
+                asset = await client.get(f"/static/{name}")
+                assert asset.status_code == 200
+                assert asset.content == (root / "static" / name).read_bytes()
+            worker = await client.get("/sw.js")
+            assert '"vb-typer-v2-brand-intro"' in worker.text
+            assert "/static/brand-intro.js" in worker.text
