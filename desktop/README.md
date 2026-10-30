@@ -181,7 +181,7 @@ ociosa) e, já visível, consulta a cada 30 ms; o desenho roda a ~50 fps.
 | `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
 | `sensitivity` | `1.0` | quão altas ficam a onda e as barras para a mesma voz (0.5 a 3.0) |
 | `shape` | `wave` | desenho da fase de gravação: `wave` (a onda da tela Ditar) ou `bar` (barra de nível) |
-| `stt_model` | `gpt-4o-mini-transcribe` | modelo de fala pedido no job; vazio segue o padrão do servidor |
+| `stt_model` | *(vazio)* | override do modelo de fala; vazio segue o modelo escolhido no servidor |
 | `upload_format` | `auto` | `auto` (Opus quando a API é remota), `opus` ou `wav` |
 | `typing_batch` | `16` | teclas por lote na inserção (1 a 64) |
 | `typing_delay_ms` | `0` | pausa por tecla, em ms (0 a 20) |
@@ -189,11 +189,17 @@ ociosa) e, já visível, consulta a cada 30 ms; o desenho roda a ~50 fps.
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
 `sensitivity`.
 
+**Espelho com a web.** Modelo de transcrição, modelo de revisão, idioma, perfil
+e atalhos vivem **no servidor** — quem manda é ele. A bandeja edita os três
+primeiros (submenus *Modelo de transcrição*, *Modelo de revisão* e *Idioma*) e os
+perfis; a interface web edita tudo, inclusive os atalhos. Qualquer mudança feita
+de um lado chega ao outro em até ~2 s: o cliente compara a `version` de
+`/api/v1/settings` e a página faz o mesmo. `stt_model` só existe para forçar um
+modelo neste computador — deixe vazio para obedecer ao servidor.
+
 **Latência.** O texto chega ao cursor em três etapas: envio do áudio, transcrição
 no servidor e digitação. Para cada uma há um ajuste:
 
-- `stt_model`: `gpt-4o-mini-transcribe` entrega antes do `gpt-transcribe`; é o
-  padrão do cliente e não muda nada no servidor.
 - `upload_format`: em `auto`, um WAV de 30 s (≈960 KB) vira Opus de ≈120 KB
   quando a API está fora da máquina — mas só se o `ffmpeg` estiver instalado,
   senão o WAV vai como antes.
