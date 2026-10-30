@@ -4,6 +4,21 @@
 
 const BASE = "/api/v1";
 
+// Respostas de erro nem sempre são JSON do backend: um proxy ou um servidor
+// estático pode devolver uma página HTML (502/503). Esse HTML nunca deve virar
+// mensagem de interface — o campo de status mostraria as próprias tags.
+const MAX_TEXT_ERROR = 200;
+
+function errorMessage(payload, status) {
+  const detail = payload && typeof payload === "object" ? payload.error?.message : undefined;
+  if (detail) return detail;
+  if (typeof payload === "string") {
+    const text = payload.trim();
+    if (text && text.length <= MAX_TEXT_ERROR && !/<[a-z!/]/i.test(text)) return text;
+  }
+  return `Erro HTTP ${status}`;
+}
+
 async function request(path, { method = "GET", body, headers = {} } = {}) {
   const options = { method, credentials: "same-origin", headers: { ...headers } };
   if (body instanceof FormData) {
@@ -28,11 +43,7 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
     : await response.text();
 
   if (!response.ok) {
-    const message =
-      (payload && payload.error && payload.error.message) ||
-      (typeof payload === "string" && payload) ||
-      `Erro HTTP ${response.status}`;
-    const error = new Error(message);
+    const error = new Error(errorMessage(payload, response.status));
     error.code = payload && payload.error ? payload.error.code : undefined;
     error.status = response.status;
     throw error;
