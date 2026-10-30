@@ -7,6 +7,10 @@ const $ = (id) => document.getElementById(id);
 
 const POLL_INTERVAL_MS = 700;
 const POLL_TIMEOUT_MS = 180_000;
+// De quanto em quanto tempo conferimos se as configurações mudaram em outro
+// cliente (bandeja do desktop, outro navegador). A resposta é pequena e a
+// comparação é feita pelo campo ``version``.
+const SETTINGS_WATCH_MS = 2_000;
 const HISTORY_PAGE = 25;
 const TERMINAL = new Set(["succeeded", "failed", "canceled"]);
 const THEME_KEY = "vb-typer-theme";
@@ -59,6 +63,7 @@ const state = {
   now: null,
   nowKey: "",
   settings: { model: "", language: "pt", week_start: "monday", allowed_models: [] },
+  settingsVersion: "",
   profiles: [],
   profileEditing: null,
   profileItems: [],
@@ -699,8 +704,13 @@ function addProfileItem() {
 }
 
 async function loadSettings() {
-  const settings = await api.getSettings();
+  applySettings(await api.getSettings());
+}
+
+/** Preenche a interface com um retrato das configurações (servidor é a fonte). */
+function applySettings(settings) {
   state.settings = settings;
+  state.settingsVersion = settings.version || "";
   const select = $("model");
   select.replaceChildren();
   for (const model of settings.allowed_models) {
@@ -718,6 +728,52 @@ async function loadSettings() {
   renderSmartModelSelects();
   renderKeyBadge(settings.api_key_configured);
   renderHotkeys();
+}
+
+/** Algum campo do formulário está em edição agora? */
+function isEditingSettings() {
+  const active = document.activeElement;
+  if (!active) return false;
+  const tag = (active.tagName || "").toLowerCase();
+  if (!["input", "select", "textarea"].includes(tag)) return false;
+  return Boolean(active.closest && active.closest("#view-settings"));
+}
+
+/**
+ * Acompanha as configurações do servidor: quem mexer na bandeja do desktop (ou
+ * em outro navegador) vê a mudança aqui em segundos, sem recarregar a página.
+ *
+ * O que o usuário estiver digitando não é atropelado: com um campo em edição, a
+ * aba é marcada para recarregar na próxima visita, mas os selects da tela Ditar
+ * acompanham na hora.
+ */
+async function reloadSettingsIfChanged() {
+  const settings = await api.getSettings();
+  if (!settings.version || settings.version === state.settingsVersion) return false;
+  state.settings = settings;
+  state.settingsVersion = settings.version;
+  await loadProfiles();
+  if (state.view === "settings" && isEditingSettings()) {
+    // Não atropela quem está digitando: recarrega a aba na próxima visita.
+    state.loaded.delete("settings");
+    renderQuickSettings();
+    renderSmartModelSelects();
+    renderProfileOptions();
+    return true;
+  }
+  applySettings(settings);
+  return true;
+}
+
+function startSettingsWatch() {
+  const tick = () => {
+    if (!document.hidden) reloadSettingsIfChanged().catch(() => {});
+    window.setTimeout(tick, SETTINGS_WATCH_MS);
+  };
+  window.setTimeout(tick, SETTINGS_WATCH_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) reloadSettingsIfChanged().catch(() => {});
+  });
 }
 
 function renderKeyBadge(configured) {
@@ -864,6 +920,9 @@ async function saveSetting(changes) {
   try {
     const updated = await api.patchSettings(changes);
     state.settings = { ...state.settings, ...updated };
+    // A versão devolvida evita que o vigia de 2 s reaplique o que acabamos de
+    // salvar (e desfaça algo que o usuário esteja digitando).
+    state.settingsVersion = updated.version || state.settingsVersion;
     renderQuickSettings();
     renderSmartModelSelects();
     state.loaded.delete("activity");
@@ -1944,6 +2003,7 @@ async function init() {
   // A aba escolhida sobrevive à recarga; sem escolha anterior, começa em Ditar.
   selectView(localStorage.getItem(VIEW_KEY) || "dictate");
   startAutoRefresh();
+  startSettingsWatch();
 
   if (!Recorder.supported) {
     $("record").disabled = true;

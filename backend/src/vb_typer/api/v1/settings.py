@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 
 from fastapi import APIRouter, status
 
@@ -19,8 +21,20 @@ def _text_prices(models: tuple[str, ...] | list[str]) -> dict[str, list[float]]:
     return {name: list(TEXT_PRICING_PER_MILLION.get(name, DEFAULT_TEXT_PRICING)) for name in models}
 
 
+def _version(values: dict) -> str:
+    """Impressão digital das escolhas editáveis (12 caracteres).
+
+    Os clientes consultam ``/settings`` de tempos em tempos; comparar isto diz se
+    algo mudou (inclusive de outro aparelho) sem depender do relógio: duas
+    edições no mesmo segundo geram versões diferentes.
+    """
+    body = json.dumps(values, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha1(body.encode("utf-8")).hexdigest()[:12]
+
+
 def _read(container: ContainerDep) -> SettingsRead:
     row = container.settings_service.current()
+    hotkeys = dict(row.hotkeys or DEFAULT_HOTKEYS)
     sample = SettingsRead(
         model=row.model,
         language=row.language,
@@ -30,10 +44,24 @@ def _read(container: ContainerDep) -> SettingsRead:
         allowed_smart_models=list(container.settings.allowed_smart_models),
         text_prices=_text_prices(container.settings.allowed_smart_models),
         week_start=row.week_start,
-        hotkeys=dict(row.hotkeys or DEFAULT_HOTKEYS),
+        hotkeys=hotkeys,
         default_hotkeys=dict(DEFAULT_HOTKEYS),
         api_key_configured=container.transcription.api_key_present(),
         allowed_models=list(container.settings.allowed_models),
+        version=_version(
+            {
+                "model": row.model,
+                "language": row.language,
+                "mode": row.mode,
+                "default_profile": row.default_profile,
+                "smart_model": row.smart_model,
+                "week_start": row.week_start,
+                "hotkeys": hotkeys,
+                # A lista de perfis também é escolha do usuário: renomear ou
+                # criar um perfil precisa chegar à bandeja sem polling extra.
+                "profiles": container.profiles.signature(),
+            }
+        ),
     )
     return sample
 

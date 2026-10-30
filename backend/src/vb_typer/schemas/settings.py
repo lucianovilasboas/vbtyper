@@ -23,6 +23,10 @@ class SettingsRead(ORMModel):
     default_hotkeys: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_HOTKEYS))
     api_key_configured: bool
     allowed_models: list[str]
+    # Impressão digital das escolhas: muda quando qualquer uma muda, mesmo que
+    # duas edições caiam no mesmo segundo. Os clientes comparam isso para saber
+    # se vale buscar o resto (ver ``version`` em settings.py).
+    version: str = ""
 
 
 class SettingsUpdate(BaseModel):

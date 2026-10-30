@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import signal
 import sys
 import threading
@@ -37,9 +38,9 @@ POLL_INTERVAL_S = 0.15
 # sem os 700 ms que a interface web usa (o texto precisa chegar logo).
 POLL_MAX_INTERVAL_S = 0.7
 JOB_TIMEOUT_S = 180.0
-# De quanto em quanto tempo relemos a configuração, para a bandeja ficar em
-# sincronia com o que for mudado na interface.
-OPTIONS_REFRESH_S = 10.0
+# De quanto em quanto tempo conferimos a versão das configurações, para o que
+# for mudado na web (modelo, idioma, perfil, atalhos) valer aqui em segundos.
+SETTINGS_POLL_S = 2.0
 # Quanto tempo a pílula do perfil fica no indicador depois do atalho.
 PROFILE_FLASH_S = 1.6
 # A pílula do perfil é mais larga que o painel normal para caber o nome.
@@ -84,6 +85,11 @@ class Daemon:
         self.mode = mode
         self.mode_current = ""
         self.profile_current = ""
+        # Escolhas do servidor que a bandeja mostra e edita (modelo e revisão).
+        self.smart_model = ""
+        self.models: list[str] = []
+        self.smart_models: list[str] = []
+        self.settings_version = ""
         # Troca temporária por atalho: não altera o padrão do backend.
         self.profile_override = ""
         self.hotkeys: dict[str, str] = dict(DEFAULT_HOTKEYS)
@@ -213,6 +219,12 @@ class Daemon:
             "mode": self.current_mode,
             "profile": self.current_profile,
             "profiles": self.profiles,
+            # O que a bandeja edita e marca no menu (modelo e revisão).
+            "model": self.model,
+            "models": self.models,
+            "smart_model": self.smart_model,
+            "smart_models": self.smart_models,
+            "language": self.language,
             "job_phase": self.job_phase,
         }
         if recording and self.preferences.shows_indicator and self.preferences.shape == "wave":
@@ -274,7 +286,7 @@ class Daemon:
         while not self.done.is_set():
             self.reload_preferences()
             self.refresh_options()
-            self.done.wait(OPTIONS_REFRESH_S)
+            self.done.wait(SETTINGS_POLL_S)
 
     def reload_preferences(self) -> bool:
         """Relê o ``desktop.json`` quando o arquivo muda; nada a fazer se não mudou.
@@ -300,26 +312,57 @@ class Daemon:
         except OSError:
             return None
 
-    def refresh_options(self) -> None:
-        """Relê modelo, idioma, perfil e atalhos (a bandeja acompanha sem reiniciar).
+    def refresh_options(self) -> bool:
+        """Sincroniza o que está escolhido no servidor com a bandeja e o ditado.
 
-        Uma falha da API mantém o que já estava em uso — inclusive a lista de
-        perfis, para o menu da bandeja não esvaziar enquanto o servidor volta.
+        Consulta ``/settings`` e compara a **versão** com a última aplicada: só
+        busca a lista de perfis e reaplica as escolhas quando algo mudou (inclusive
+        de outro aparelho). Uma falha da API mantém o que já estava em uso — a
+        lista de perfis inclusive, para o menu não esvaziar enquanto o servidor
+        volta. Devolve se houve mudança aplicada.
         """
         payload = self.api.settings_or_empty()
-        profiles = self.api.list_profiles()
-        if payload:
+        if not payload:
+            return False
+        version = self._settings_fingerprint(payload)
+        if version == self.settings_version:
             self._settings_ready = True
+            return False
+        self.settings_version = version
+        profiles = self.api.list_profiles()
+        self._apply_settings(payload, profiles)
+        return True
+
+    @staticmethod
+    def _settings_fingerprint(payload: dict) -> str:
+        """Versão publicada pela API; servidor antigo cai no conteúdo inteiro."""
+        version = str(payload.get("version") or "")
+        if version:
+            return version
+        return json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+
+    def _apply_settings(self, payload: dict, profiles: list[dict] | None = None) -> None:
+        """Adota modelo, idioma, modo, perfil, listas e atalhos do servidor."""
+        self._settings_ready = True
         model = str(payload.get("model") or "")
         language = str(payload.get("language") or "")
         mode = str(payload.get("mode") or "")
         profile = str(payload.get("default_profile") or "")
+        smart_model = str(payload.get("smart_model") or "")
         if model:
             self.model = model
         if language:
             self.language = language
         if mode:
             self.mode_current = mode
+        if smart_model:
+            self.smart_model = smart_model
+        models = payload.get("allowed_models")
+        if isinstance(models, list) and models:
+            self.models = [str(item) for item in models if item]
+        smart_models = payload.get("allowed_smart_models")
+        if isinstance(smart_models, list) and smart_models:
+            self.smart_models = [str(item) for item in smart_models if item]
         if profiles:
             self.profiles = profiles
             slugs = {item["slug"] for item in profiles}
@@ -335,14 +378,23 @@ class Daemon:
         if isinstance(hotkeys, dict) and hotkeys:
             self._apply_hotkeys({str(key): str(value) for key, value in hotkeys.items()})
 
+    def _patch_setting(self, changes: dict) -> dict | None:
+        """Grava uma escolha no servidor e já a adota aqui (sem esperar o laço)."""
+        try:
+            payload = self.api.patch_settings(changes)
+        except ApiError as exc:
+            self._notify("VB Typer — erro", str(exc), "critical")
+            return None
+        self.settings_version = self._settings_fingerprint(payload)
+        self._apply_settings(payload)
+        return payload
+
     def set_mode(self, value: str) -> bool:
         """Troca o modo de transcrição no backend (é ele que guarda a escolha)."""
         if value not in MODES:
             return False
-        try:
-            payload = self.api.patch_settings({"mode": value})
-        except ApiError as exc:
-            self._notify("VB Typer — erro", str(exc), "critical")
+        payload = self._patch_setting({"mode": value})
+        if payload is None:
             return False
         self.mode_current = str(payload.get("mode") or value)
         # Cliente antigo trocando modo: o perfil acompanha (smart = revisado).
@@ -351,15 +403,32 @@ class Daemon:
             self.profile_current = default_profile
         return True
 
+    def set_model(self, value: str) -> bool:
+        """Modelo de transcrição do servidor — vale para qualquer cliente."""
+        if not value or (self.models and value not in self.models):
+            return False
+        return self._patch_setting({"model": value}) is not None
+
+    def set_smart_model(self, value: str) -> bool:
+        """Modelo da segunda chamada (revisão) — vale para qualquer cliente."""
+        if not value or (self.smart_models and value not in self.smart_models):
+            return False
+        return self._patch_setting({"smart_model": value}) is not None
+
+    def set_language(self, value: str) -> bool:
+        """Idioma do reconhecimento; mesma regra do backend (2 a 16 letras)."""
+        normalized = (value or "").strip().lower()
+        if not 2 <= len(normalized) <= 16:
+            return False
+        return self._patch_setting({"language": normalized}) is not None
+
     def set_profile(self, slug: str) -> bool:
         """Troca o perfil de texto no backend (é ele que guarda a escolha)."""
         slugs = {item["slug"] for item in self.profiles}
         if not slug or (slugs and slug not in slugs):
             return False
-        try:
-            payload = self.api.patch_settings({"default_profile": slug})
-        except ApiError as exc:
-            self._notify("VB Typer — erro", str(exc), "critical")
+        payload = self._patch_setting({"default_profile": slug})
+        if payload is None:
             return False
         self.profile_current = str(payload.get("default_profile") or slug)
         # Escolha explícita (bandeja): o ciclo temporário perde a razão de ser.
@@ -708,6 +777,12 @@ class Daemon:
             return {"ok": self.set_mode(value or "")}
         if command == "profile":
             return {"ok": self.set_profile(value or "")}
+        if command == "model":
+            return {"ok": self.set_model(value or "")}
+        if command == "smart_model":
+            return {"ok": self.set_smart_model(value or "")}
+        if command == "language":
+            return {"ok": self.set_language(value or "")}
         actions = {
             "show": self.show_ui,
             "toggle": self.toggle_listener,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 from vb_typer_desktop.api import ApiError, Job
@@ -145,6 +147,9 @@ class FakeApi:
         language: str = "pt",
         mode: str = "literal",
         default_profile: str = "literal",
+        smart_model: str = "gpt-4o-mini",
+        models: list[str] | None = None,
+        smart_models: list[str] | None = None,
         profiles: list[dict] | None = None,
         phase: str = "",
         hotkeys: dict[str, str] | None = None,
@@ -164,10 +169,28 @@ class FakeApi:
         self.transcription_id = transcription_id
         self.model = model
         self.language = language
+        self.smart_model = smart_model
+        self.models = (
+            list(models)
+            if models is not None
+            else [
+                "gpt-4o-mini-transcribe",
+                "gpt-transcribe",
+            ]
+        )
+        self.smart_models = (
+            list(smart_models)
+            if smart_models is not None
+            else [
+                "gpt-4o-mini",
+                "gpt-4.1-mini",
+            ]
+        )
         self.invalid_models: set[str] = set()
         self.uploads: list[dict] = []
         self.polls = 0
         self.settings_reads = 0
+        self.profile_reads = 0
         self.cancelled: list[str] = []
         self.inserts: list[tuple[int, bool, int | None]] = []
         self.patched: list[dict] = []
@@ -183,13 +206,36 @@ class FakeApi:
             "language": self.language,
             "mode": self.mode,
             "default_profile": self.default_profile,
+            "smart_model": self.smart_model,
+            "allowed_models": list(self.models),
+            "allowed_smart_models": list(self.smart_models),
             "hotkeys": dict(self.hotkeys),
+            # Mesmo contrato da API: impressão digital do que os clientes aplicam.
+            "version": self._version(),
         }
+
+    def _version(self) -> str:
+        body = json.dumps(
+            {
+                "model": self.model,
+                "language": self.language,
+                "mode": self.mode,
+                "default_profile": self.default_profile,
+                "smart_model": self.smart_model,
+                "hotkeys": self.hotkeys,
+                "profiles": self.profiles,
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        )
+        return hashlib.sha1(body.encode("utf-8")).hexdigest()[:12]
 
     def settings_or_empty(self) -> dict:
         return self.settings()
 
     def list_profiles(self) -> list[dict]:
+        self.profile_reads += 1
         return list(self.profiles)
 
     def patch_settings(self, changes: dict) -> dict:
@@ -200,7 +246,13 @@ class FakeApi:
         if "default_profile" in changes:
             self.default_profile = str(changes["default_profile"])
             self.mode = "literal" if self.default_profile == "literal" else "smart"
-        return {"mode": self.mode, "default_profile": self.default_profile}
+        if "model" in changes:
+            self.model = str(changes["model"])
+        if "smart_model" in changes:
+            self.smart_model = str(changes["smart_model"])
+        if "language" in changes:
+            self.language = str(changes["language"])
+        return self.settings()
 
     def create_job(
         self,

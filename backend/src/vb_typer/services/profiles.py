@@ -165,6 +165,11 @@ class ProfileService:
         with self.session_factory() as session:
             return [_to_spec(row) for row in self.repo.list(session)]
 
+    def signature(self) -> list[tuple[str, str, str]]:
+        """Impressão digital da lista (slug, nome, edição), para a versão."""
+        with self.session_factory() as session:
+            return self.repo.signature(session)
+
     def get(self, slug: str) -> ProfileSpec:
         normalized = (slug or "").strip().lower()
         with self.session_factory() as session:

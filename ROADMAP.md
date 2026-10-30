@@ -348,6 +348,31 @@ o worker respeita, mas `ProfileCreate`/`ProfileUpdate` não aceitam o campo — 
 dá para mudar o modelo global das configurações). Só faz sentido depois de medir
 o peso da segunda chamada com a fase `rendering` visível.
 
+### Espelho entre bandeja e web: **feito** (branch `feat/espelhar-configuracoes`)
+
+As escolhas do ditado passaram a ter um dono só — o servidor — e a chegar aos
+dois lados em segundos:
+
+- **bandeja** ganhou os submenus *Modelo de transcrição*, *Modelo de revisão* e
+  *Idioma* (item vigente marcado no rótulo, sem `RadioMenuItem`), além dos perfis
+  que já existiam. Cada clique grava em `PATCH /api/v1/settings` e o daemon adota
+  a resposta na hora, então o ditado seguinte já usa a escolha nova.
+- **sentido web → cliente**: o laço do daemon caiu de 10 s para **2 s** e passou a
+  comparar a `version` publicada em `/settings` — só busca a lista de perfis e
+  reaplica quando algo mudou. Menos tráfego que antes, mesmo assim mais rápido.
+- **sentido cliente → web**: a página compara a mesma `version` a cada 2 s e
+  re-renderiza selects e perfis. Se um campo estiver em edição, ela não atropela:
+  recarrega a aba na próxima visita.
+- **modelo**: o cliente deixou de impor `gpt-4o-mini-transcribe`. `stt_model` no
+  `desktop.json` nasceu para resolver a latência e virou override vazio por
+  padrão — quem manda é o modelo escolhido na web ou na bandeja.
+- **versão**: a impressão digital inclui a lista de perfis, então renomear ou
+  criar um perfil também se propaga.
+
+Fora do escopo, por decisão: atalhos continuam sendo editados só na web; avisos,
+forma da onda e ritmo da digitação continuam no `desktop.json` (são por
+dispositivo e, num SaaS multiusuário, precisarão de tabela por cliente).
+
 ---
 
 ## 4. macOS e Windows

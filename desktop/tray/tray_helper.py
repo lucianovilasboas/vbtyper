@@ -39,6 +39,37 @@ def profile_label(name: str, active: bool) -> str:
     return f"{name}{PROFILE_MARK}" if active else name
 
 
+# Idiomas oferecidos na bandeja: os mesmos que a interface web lista. O código
+# atual fora desta lista continua selecionável (aparece pelo próprio código).
+LANGUAGE_CHOICES = (
+    ("pt", "Português"),
+    ("en", "English"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("it", "Italiano"),
+    ("ja", "日本語"),
+    ("zh", "中文"),
+)
+LANGUAGE_NAMES = dict(LANGUAGE_CHOICES)
+
+
+def language_label(code: str) -> str:
+    """Nome legível do idioma; código desconhecido aparece como veio."""
+    name = LANGUAGE_NAMES.get(code)
+    return f"{name} ({code})" if name else code
+
+
+def choice_signature(values) -> tuple[str, ...]:
+    """Lista de escolhas na ordem exibida — a chave de "a lista mudou"."""
+    return tuple(str(value) for value in values or () if value)
+
+
+def choice_label(name: str, active: bool) -> str:
+    """Rótulo de uma escolha: a vigente é marcada no próprio texto."""
+    return f"{name}{PROFILE_MARK}" if active else name
+
+
 def profile_signature(profiles) -> tuple[tuple[str, str], ...]:
     """Pares ``(slug, nome)`` na ordem exibida — a chave de "a lista mudou"."""
     signature = []
@@ -50,6 +81,60 @@ def profile_signature(profiles) -> tuple[tuple[str, str], ...]:
             continue
         signature.append((slug, str(item.get("name") or slug)))
     return tuple(signature)
+
+
+class ChoiceMenu:
+    """Submenu de escolhas do servidor (modelo, revisão, idioma).
+
+    Mesmo padrão dos perfis: itens simples, com a escolha vigente marcada no
+    próprio rótulo — ``RadioMenuItem``/``CheckMenuItem`` foram descartados porque
+    o host do AppIndicator ativava um item sozinho no primeiro uso. O submenu é
+    reconstruído só quando a lista muda, e some quando ela vem vazia (API fora).
+    """
+
+    def __init__(self, gtk, menu, title: str, command: str, send, label_for=None) -> None:
+        self.Gtk = gtk
+        self.command = command
+        self.send = send
+        self.label_for = label_for or (lambda value: value)
+        self.submenu = gtk.Menu()
+        self.item = gtk.MenuItem(label=title)
+        self.item.set_submenu(self.submenu)
+        self.item.show()
+        menu.append(self.item)
+        self.items: dict[str, object] = {}
+        self.signature: tuple[str, ...] | None = None
+        self.current = ""
+
+    def sync(self, values, current: str) -> None:
+        """Acompanha a lista e marca a escolha vigente."""
+        signature = choice_signature(values)
+        if signature != self.signature:
+            self.signature = signature
+            for item in self.items.values():
+                self.submenu.remove(item)
+            self.items.clear()
+            for value in signature:
+                item = self.Gtk.MenuItem(label=self.label_for(value))
+                item.connect("activate", lambda *_, v=value: self.send(self.command, v))
+                item.show()
+                self.submenu.append(item)
+                self.items[value] = item
+            self.current = ""  # a lista mudou: remarca a vigente
+            if signature:
+                self.item.show()
+            else:
+                self.item.hide()
+        self._mark(current)
+
+    def _mark(self, current: str) -> None:
+        if current == self.current:
+            return
+        self.current = current
+        for value in self.signature:
+            item = self.items.get(value)
+            if item is not None:
+                item.set_label(choice_label(self.label_for(value), value == current))
 
 
 class Tray:
@@ -102,6 +187,20 @@ class Tray:
         self.shown_profiles = ()
         self.shown_profile = ""
         # -----------------------------------------------------
+
+        # --- acrescentado no 2.0: modelo, revisão e idioma na bandeja ---
+        # As escolhas vivem no servidor; aqui só se escolhe e se marca a vigente,
+        # para a web e o cliente ficarem sempre iguais.
+        self.model_menu = ChoiceMenu(
+            Gtk, self.menu, "Modelo de transcrição", "model", self.send
+        )
+        self.smart_menu = ChoiceMenu(
+            Gtk, self.menu, "Modelo de revisão", "smart_model", self.send
+        )
+        self.language_menu = ChoiceMenu(
+            Gtk, self.menu, "Idioma", "language", self.send, label_for=language_label
+        )
+        # ----------------------------------------------------------------
 
         self.menu.append(self.Gtk.SeparatorMenuItem())
         configure_item = self.Gtk.MenuItem(label="Configurar conexão…")
@@ -173,6 +272,14 @@ class Tray:
             self.indicator.set_icon_full(self.icon_path(icon), tooltip)
             self.toggle_item.set_label("Parar ditado" if dictating else "Iniciar ditado")
         self._sync_profiles(state.get("profiles") or (), str(state.get("profile") or ""))
+        self.model_menu.sync(state.get("models") or (), str(state.get("model") or ""))
+        self.smart_menu.sync(state.get("smart_models") or (), str(state.get("smart_model") or ""))
+        languages = [code for code, _ in LANGUAGE_CHOICES]
+        current_language = str(state.get("language") or "")
+        if current_language and current_language not in languages:
+            # Idioma posto na interface fora da lista curta continua selecionável.
+            languages.insert(0, current_language)
+        self.language_menu.sync(languages, current_language)
         return True
 
     def _sync_profiles(self, profiles, current: str) -> None:

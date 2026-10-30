@@ -213,12 +213,24 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     `4` reproduz o comportamento antigo.
 
 28. A **VPS é a conexão padrão e a fonte da verdade** do ditado; o cliente não
-    prefere a API local. O que o cliente pode escolher é o **modelo de fala do
-    job** (`stt_model`, padrão `gpt-4o-mini-transcribe`, vazio = padrão do
-    servidor), e ele cai para o servidor quando a API responde `invalid_model`.
-    A configuração da VPS não é alterada por causa de latência sem pedido
-    explícito. Para encurtar o envio, o áudio vira Opus (`upload_format: auto`)
-    quando a API está fora da máquina, com o WAV como fallback obrigatório.
+    prefere a API local. As escolhas do ditado (modelo de fala, modelo de
+    revisão, idioma, perfil e atalhos) vivem **no servidor** e são editadas pela
+    bandeja ou pela interface web — nunca em dois lugares. `stt_model` no
+    `desktop.json` é só um override consciente e nasce **vazio**; preenchido, ele
+    manda neste computador e ignora o servidor (é o único campo que faz isso). Se
+    a API recusar o modelo com `invalid_model`, o cliente cai para o padrão dela.
+    Para encurtar o envio, o áudio vira Opus (`upload_format: auto`) quando a API
+    está fora da máquina, com o WAV como fallback obrigatório.
+
+29. O espelhamento entre bandeja e web é por **versão das configurações**:
+    `GET/PATCH /api/v1/settings` devolvem `version`, uma impressão digital de
+    tudo que o cliente aplica (modelo, revisão, idioma, modo, perfil padrão,
+    início da semana, atalhos) **e da lista de perfis**. O desktop compara a cada
+    2 s e só busca perfis/reaplica quando muda; a página compara no mesmo ritmo e
+    re-renderiza sem recarregar — sem atropelar o campo que o usuário estiver
+    digitando. Nada de SSE/WebSocket: a decisão por polling está registrada no
+    `app.js` e 2 s bastam. Ao gravar pela bandeja, o cliente adota a resposta na
+    hora (o próximo ditado já usa a escolha nova).
 
 ## Testes
 
@@ -287,14 +299,15 @@ O backlog combinado com o usuário vive em [`ROADMAP.md`](ROADMAP.md) — leia a
 de propor trabalho novo.
 
 - Backend v1 completo (jobs, histórico, estatísticas, configurações, CSV,
-  importador do 1.x) — 188 testes.
+  importador do 1.x) — 191 testes.
 - Cliente web (Ditar / Histórico / Atividade) servido na mesma origem.
 - Cliente desktop Linux/X11 completo (atalho, gravação, job, inserção no cursor,
-  bandeja, indicador visual, interface no navegador) — 310 testes. Verificado à
+  bandeja, indicador visual, interface no navegador) — 324 testes. Verificado à
   mão: XTEST com acentos, ciclo de vida do daemon, ditado ponta a ponta e as
   quatro fases do indicador (foto por fase, com API simulada).
 - Latência do ditado instrumentada (`transcribe_ms`, `insert_ms`,
   `scripts/bench-dictation.py`) e atacada no cliente (ver invariantes 26–28).
+- Bandeja e web espelhadas pela `version` de `/settings` (invariante 29).
 - Próximo: macOS e Windows pela camada `desktop/src/vb_typer_desktop/platform/`
   (adaptadores de áudio, inserção e bandeja), depois empacotamento one-file.
 

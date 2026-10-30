@@ -23,9 +23,7 @@ DEFAULTS = {
     "sensitivity": 1.0,
     "shape": "wave",
     "base_url": "",
-    # Modelo de fala pedido no job; vazio segue o padrão do servidor. O rápido
-    # entrega o texto antes do modelo grande e vale para qualquer perfil.
-    "stt_model": "gpt-4o-mini-transcribe",
+    "stt_model": "",
     # Formato do envio: "auto" comprime (Opus) quando a API é remota.
     "upload_format": "auto",
     # Ritmo da inserção no cursor: teclas por lote e pausa por tecla (ms).
@@ -58,7 +56,8 @@ class Preferences:
     desenho da fase de gravação: ``wave`` (a onda colorida da tela Ditar) ou
     ``bar`` (barra de nível).
 
-    ``stt_model`` é o modelo pedido no job (vazio segue o servidor);
+    ``stt_model`` é um override de modelo de fala: vazio (o padrão) segue o que
+    está escolhido no servidor, para a web e a bandeja mandarem no ditado;
     ``upload_format`` decide se o WAV vira Opus antes do envio; e
     ``typing_batch``/``typing_delay_ms`` regulam a inserção no cursor — lote
     maior é mais rápido, pausa maior é mais tolerante em aplicativos lentos.

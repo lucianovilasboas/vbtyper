@@ -83,7 +83,8 @@ def test_non_mapping_input_is_ignored():
 
 def test_latency_defaults_are_the_fast_ones():
     current = preferences.Preferences()
-    assert current.stt_model == "gpt-4o-mini-transcribe"
+    # Modelo vazio = segue o servidor: a web e a bandeja mandam no ditado.
+    assert current.stt_model == ""
     assert current.upload_format == "auto"
     assert (current.typing_batch, current.typing_delay_ms) == (16, 0)
     assert current.typing_delay == 0.0
@@ -109,10 +110,10 @@ def test_upload_format_accepts_only_known_choices():
 
 
 def test_the_stt_model_can_be_left_to_the_server():
-    # Vazio é escolha legítima: segue o padrão do backend.
+    # Vazio é o padrão: segue o modelo escolhido no servidor.
     assert preferences.from_mapping({"stt_model": ""}).stt_model == ""
     assert preferences.from_mapping({"stt_model": "  "}).stt_model == ""
-    assert preferences.from_mapping({"stt_model": 7}).stt_model == "gpt-4o-mini-transcribe"
+    assert preferences.from_mapping({"stt_model": 7}).stt_model == ""
     assert preferences.from_mapping({"stt_model": " gpt-transcribe "}).stt_model == "gpt-transcribe"
 
 
