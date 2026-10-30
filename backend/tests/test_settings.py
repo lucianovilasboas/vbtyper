@@ -172,3 +172,60 @@ async def test_patch_rejects_unknown_key(client, auth):
 
     assert response.status_code == 400
     assert "Tecla desconhecida" in response.json()["error"]["message"]
+
+
+async def test_version_changes_only_when_something_changes(client, auth):
+    first = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+    assert first and len(first) == 12
+
+    # Ler de novo não muda a versão (é o que os clientes comparam a cada 2 s).
+    again = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+    assert again == first
+
+    # Um PATCH que não altera nada também não pode parecer mudança.
+    await client.patch("/api/v1/settings", headers=auth, json={"language": "pt"})
+    assert (await client.get("/api/v1/settings", headers=auth)).json()["version"] == first
+
+    await client.patch("/api/v1/settings", headers=auth, json={"language": "en"})
+    changed = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+    assert changed != first
+
+
+async def test_version_changes_for_each_editable_choice(client, auth):
+    """Todo campo que o cliente aplica precisa entrar na impressão digital."""
+    seen = {(await client.get("/api/v1/settings", headers=auth)).json()["version"]}
+    for body in (
+        {"model": "gpt-transcribe"},
+        {"smart_model": "gpt-4.1-mini"},
+        {"default_profile": "revisado"},
+        {"week_start": "sunday"},
+        {"hotkeys": {"profile_next": "ctrl+alt+F7"}},
+    ):
+        response = await client.patch("/api/v1/settings", headers=auth, json=body)
+        assert response.status_code == 200, body
+        assert response.json()["version"]
+        seen.add(response.json()["version"])
+
+    assert len(seen) == 6  # o inicial + os cinco, todos distintos
+
+
+async def test_version_follows_the_profile_list(client, auth):
+    """Renomear ou criar perfil precisa chegar ao cliente pela versão."""
+    base = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+
+    created = await client.post(
+        "/api/v1/profiles",
+        headers=auth,
+        json={"name": "Perfil novo", "instructions": "Deixe o texto direto e curto."},
+    )
+    assert created.status_code == 201
+    after_create = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+    assert after_create != base
+
+    slug = created.json()["slug"]
+    renamed = await client.patch(
+        f"/api/v1/profiles/{slug}", headers=auth, json={"name": "Perfil renomeado"}
+    )
+    assert renamed.status_code == 200
+    after_rename = (await client.get("/api/v1/settings", headers=auth)).json()["version"]
+    assert after_rename != after_create
