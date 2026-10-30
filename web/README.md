@@ -120,3 +120,15 @@ service worker real, verifica a migração do cache e a abertura offline. As
 capturas congelam frames CSS em 470 ms (impacto) e 1250 ms (nome revelado) para
 comparação visual. Não simulam uma instalação nativa do PWA no sistema operacional.
 
+
+### Layout responsivo (regressão)
+
+`web/tests/check_layout.py` abre as quatro telas em várias larguras contra uma
+instância real e falha se alguma provocar rolagem horizontal — o defeito clássico
+de configurações no celular, onde um `select` de 210px define a coluna do grid e
+a página inteira estoura:
+
+```sh
+python3 web/tests/check_layout.py --url http://127.0.0.1:8765
+python3 web/tests/check_layout.py --widths 320,360,390,430,768,1024,1280
+```
