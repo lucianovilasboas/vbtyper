@@ -63,6 +63,38 @@ def test_create_job_omits_empty_options():
     content = route.calls[0].request.content
     assert b'name="model"' not in content
     assert b'name="profile"' not in content
+    assert b'name="duration_s"' not in content
+
+
+@respx.mock
+def test_create_job_sends_the_measured_duration():
+    route = respx.post(f"{BASE}/api/v1/transcription-jobs").mock(
+        return_value=httpx.Response(202, json={"id": "job-1", "status": "queued"})
+    )
+    api.ApiClient(token="t").create_job(b"OggS", "a.ogg", "audio/ogg", duration_s=12.3456)
+    content = route.calls[0].request.content
+    assert b'name="duration_s"' in content
+    assert b"12.346" in content
+
+
+@respx.mock
+def test_error_envelope_carries_the_code():
+    respx.post(f"{BASE}/api/v1/transcription-jobs").mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "error": {
+                    "code": "invalid_model",
+                    "message": "Modelo inválido.",
+                    "request_id": "x",
+                }
+            },
+        )
+    )
+    with pytest.raises(api.ApiError) as caught:
+        api.ApiClient(token="t").create_job(b"RIFF", "a.wav", "audio/wav", model="nada")
+    assert caught.value.code == "invalid_model"
+    assert str(caught.value) == "Modelo inválido."
 
 
 @respx.mock
@@ -160,34 +192,6 @@ def test_network_failure_becomes_api_error():
     respx.get(f"{BASE}/api/v1/ready").mock(side_effect=httpx.ConnectError("recusada"))
     with pytest.raises(api.ApiError, match="Não foi possível falar com a API"):
         api.ApiClient(token="t").ready()
-
-
-@respx.mock
-def test_current_options_falls_back_on_failure():
-    respx.get(f"{BASE}/api/v1/settings").mock(side_effect=httpx.ConnectError("off"))
-    assert api.ApiClient(token="t").current_options() == ("", "", "", "")
-
-
-@respx.mock
-def test_current_options_read_settings():
-    respx.get(f"{BASE}/api/v1/settings").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "model": "gpt-transcribe",
-                "language": "en",
-                "mode": "smart",
-                "default_profile": "email",
-                "api_key_configured": True,
-            },
-        )
-    )
-    assert api.ApiClient(token="t").current_options() == (
-        "gpt-transcribe",
-        "en",
-        "smart",
-        "email",
-    )
 
 
 @respx.mock

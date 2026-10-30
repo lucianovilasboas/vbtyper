@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 
-from vb_typer_desktop import connection, preferences
+from vb_typer_desktop import compress, connection, preferences
 from vb_typer_desktop.api import ApiClient, ApiError, Job
 from vb_typer_desktop.audio import (
     MAX_AUDIO_SECONDS,
@@ -32,7 +32,10 @@ from vb_typer_desktop.profile_switch import (
 from vb_typer_desktop.text_guards import apply_guard
 from vb_typer_desktop.ui import open_ui
 
-POLL_INTERVAL_S = 0.3
+POLL_INTERVAL_S = 0.15
+# A consulta cresce até aqui quando o job demora: sem martelar o servidor, mas
+# sem os 700 ms que a interface web usa (o texto precisa chegar logo).
+POLL_MAX_INTERVAL_S = 0.7
 JOB_TIMEOUT_S = 180.0
 # De quanto em quanto tempo relemos a configuração, para a bandeja ficar em
 # sincronia com o que for mudado na interface.
@@ -101,11 +104,22 @@ class Daemon:
         self.capture_timer: threading.Timer | None = None
         self.last_transcript = ""
         self.quitting = False
+        self._settings_ready = False
+        self._model_rejected = ""
+        self._prefs_stamp = self._preferences_stamp()
         self._flash_until = 0.0
         self._flash_phase = "idle"
         self._flash_message = ""
         self._flash_detail = ""
         self._indicator_cache: tuple[float, str, Rect | None] = (0.0, "idle", None)
+        self._apply_typing()
+
+    def _apply_typing(self) -> None:
+        """Leva o ritmo de inserção das preferências para o adaptador da plataforma."""
+        configure = getattr(self.platform, "configure_typing", None)
+        if configure is None:
+            return
+        configure(self.preferences.typing_batch, self.preferences.typing_delay)
 
     # ------------------------------------------------------------------ estado
 
@@ -258,8 +272,33 @@ class Daemon:
 
     def _watch_options(self) -> None:
         while not self.done.is_set():
+            self.reload_preferences()
             self.refresh_options()
             self.done.wait(OPTIONS_REFRESH_S)
+
+    def reload_preferences(self) -> bool:
+        """Relê o ``desktop.json`` quando o arquivo muda; nada a fazer se não mudou.
+
+        O carimbo do arquivo evita ler (e reaplicar) a cada volta: quem inicia o
+        daemon com preferências já carregadas não é sobrescrito sem motivo.
+        """
+        stamp = self._preferences_stamp()
+        if stamp is None or stamp == self._prefs_stamp:
+            return False
+        self._prefs_stamp = stamp
+        current = preferences.load()
+        if current == self.preferences:
+            return False
+        self.preferences = current
+        self._apply_typing()
+        return True
+
+    @staticmethod
+    def _preferences_stamp() -> int | None:
+        try:
+            return preferences.preference_file().stat().st_mtime_ns
+        except OSError:
+            return None
 
     def refresh_options(self) -> None:
         """Relê modelo, idioma, perfil e atalhos (a bandeja acompanha sem reiniciar).
@@ -269,6 +308,8 @@ class Daemon:
         """
         payload = self.api.settings_or_empty()
         profiles = self.api.list_profiles()
+        if payload:
+            self._settings_ready = True
         model = str(payload.get("model") or "")
         language = str(payload.get("language") or "")
         mode = str(payload.get("mode") or "")
@@ -498,6 +539,7 @@ class Daemon:
 
     def _finish_and_transcribe(self, recorder: Recorder, target: int | None) -> None:
         path = recorder.path
+        prepared = None
         try:
             interrupted = recorder.stop()
             if self.cancel.is_set():
@@ -512,11 +554,18 @@ class Daemon:
                 detail = recorder.last_stderr()
                 suffix = f" {detail}" if detail else ""
                 raise AudioError(f"Gravador de áudio falhou (código {returncode}).{suffix}")
-            validate_wav(path, recorder.elapsed)
+            duration = validate_wav(path, recorder.elapsed)
             if self.cancel.is_set():
                 return
             self._notify("VB Typer", "Áudio gravado. Transcrevendo…")
-            job = self._wait_for_terminal(self._submit(path))
+            # O PCM ocupa ~8× o mesmo áudio em Opus: fora da máquina local o
+            # upload menor chega antes. A conversão nunca derruba o ditado.
+            upload, content_type = path, "audio/wav"
+            if compress.should_compress(self.preferences.upload_format, self.api.base_url):
+                converted = compress.to_opus(path)
+                if converted is not None:
+                    prepared, upload, content_type = converted, converted, "audio/ogg"
+            job = self._wait_for_terminal(self._submit(upload, content_type, duration))
             if job is None:
                 return
             self._insert(job, target)
@@ -527,6 +576,8 @@ class Daemon:
                 self._notify("VB Typer — erro", str(exc), "critical")
         finally:
             path.unlink(missing_ok=True)
+            if prepared is not None:
+                prepared.unlink(missing_ok=True)
             with self.lock:
                 self.busy = False
                 self.job_phase = ""
@@ -534,29 +585,58 @@ class Daemon:
     # ------------------------------------------------------------ transcrição
 
     def _options(self) -> tuple[str | None, str, str]:
-        """Modelo, idioma e perfil vigentes; a falha não impede o ditado."""
-        model, language, _mode, profile = self.api.current_options()
+        """Modelo, idioma e perfil vigentes; a falha não impede o ditado.
+
+        Sai do que o ``refresh_options`` já leu (a cada 10 s) em vez de pedir as
+        configurações de novo a cada ditado: era uma ida e volta inteira antes
+        do upload, só para repetir o que a bandeja já sabia. A leitura síncrona
+        só acontece na primeira vez, quando ainda não há nada em cache.
+        """
+        if not self._settings_ready:
+            self.refresh_options()
+        model = self.preferences.stt_model or self.model
         return (
-            model or self.model or None,
-            language or self.language or "pt",
-            self.profile_override or profile or self.profile_current or "",
+            model or None,
+            self.language or "pt",
+            self.profile_override or self.profile_current or "",
         )
 
-    def _submit(self, path) -> Job:
+    def _submit(self, path, content_type: str, duration_s: float | None = None) -> Job:
         model, language, profile = self._options()
         self.job_phase = ""
-        return self.api.create_job(
-            path.read_bytes(),
-            filename=path.name,
-            content_type="audio/wav",
-            model=model,
-            language=language,
-            profile=profile or None,
-        )
+        if model and model == self._model_rejected:
+            # O servidor já recusou este modelo: não insistir a cada ditado.
+            model = None
+        try:
+            return self.api.create_job(
+                path.read_bytes(),
+                filename=path.name,
+                content_type=content_type,
+                model=model,
+                language=language,
+                profile=profile or None,
+                duration_s=duration_s,
+            )
+        except ApiError as exc:
+            if not model or exc.code != "invalid_model":
+                raise
+            # Modelo pedido pelo cliente fora da lista do servidor: o ditado
+            # continua com o padrão dele, em vez de virar erro na tela.
+            self._model_rejected = model
+            return self.api.create_job(
+                path.read_bytes(),
+                filename=path.name,
+                content_type=content_type,
+                language=language,
+                profile=profile or None,
+                duration_s=duration_s,
+            )
 
     def _wait_for_terminal(self, job: Job) -> Job | None:
+        """Acompanha o job consultando na hora e espaçando só se ele demorar."""
         deadline = time.monotonic() + self.job_timeout
         self.job_phase = job.phase
+        delay = 0.0
         while True:
             if self.cancel.is_set():
                 self._request_cancel(job)
@@ -566,9 +646,20 @@ class Daemon:
             if time.monotonic() >= deadline:
                 self._request_cancel(job)
                 raise RuntimeError("Tempo limite de transcrição excedido.")
-            self.cancel.wait(self.poll_interval)
+            if delay > 0:
+                self.cancel.wait(delay)
+            # Primeira consulta imediata: o job curto pode já estar pronto.
+            delay = self._next_poll_delay(delay)
             job = self.api.get_job(job.id)
             self.job_phase = job.phase
+
+    def _next_poll_delay(self, current: float) -> float:
+        """Intervalo seguinte: começa no mínimo e dobra até o teto."""
+        if self.poll_interval <= 0:
+            return 0.0
+        if current <= 0:
+            return self.poll_interval
+        return min(max(self.poll_interval, current * 2), POLL_MAX_INTERVAL_S)
 
     def _request_cancel(self, job: Job) -> None:
         with contextlib.suppress(ApiError):
@@ -591,8 +682,11 @@ class Daemon:
             return
         started = time.monotonic()
         self.platform.type_text(text, target, self.cancel)
-        self._mark_inserted(job, int((time.monotonic() - started) * 1000))
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        # O aviso não espera o histórico: o PATCH é informativo e leva uma ida
+        # e volta que não pode atrasar o "inserido" na tela.
         self._flash("inserted", "inserido", INSERTED_FLASH_S)
+        self._mark_inserted(job, elapsed_ms)
         self._notify("VB Typer", "Transcrição inserida no aplicativo que estava em foco.")
 
     def _mark_inserted(self, job: Job, insert_ms: int) -> None:
@@ -650,6 +744,8 @@ class Daemon:
         self.api.close()
         self.api = ApiClient(base_url=result.url)
         self.preferences = preferences.load()
+        self._prefs_stamp = self._preferences_stamp()
+        self._apply_typing()
         self._notify_fn("VB Typer", "Conexão atualizada.", "normal")
         return True
 

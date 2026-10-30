@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from vb_typer_desktop.api import Job
+from vb_typer_desktop.api import ApiError, Job
 from vb_typer_desktop.geometry import Rect
 from vb_typer_desktop.profile_switch import DEFAULT_HOTKEYS
 
@@ -55,12 +55,16 @@ class FakePlatform:
         self.pointer = pointer
         self.typed: list[str] = []
         self.targets: list[int | None] = []
+        self.typing: tuple[int, float] | None = None
         self.watcher: FakeWatcher | None = None
         self.combo_watchers: list[FakeComboWatcher] = []
 
     def ensure_session(self) -> None:
         if self.session_failure is not None:
             raise self.session_failure
+
+    def configure_typing(self, batch: int, delay: float) -> None:
+        self.typing = (batch, delay)
 
     def active_window(self) -> int | None:
         return self.window
@@ -160,8 +164,10 @@ class FakeApi:
         self.transcription_id = transcription_id
         self.model = model
         self.language = language
+        self.invalid_models: set[str] = set()
         self.uploads: list[dict] = []
         self.polls = 0
+        self.settings_reads = 0
         self.cancelled: list[str] = []
         self.inserts: list[tuple[int, bool, int | None]] = []
         self.patched: list[dict] = []
@@ -171,6 +177,7 @@ class FakeApi:
         return {"status": "ok", "database": True, "api_key_configured": True}
 
     def settings(self) -> dict:
+        self.settings_reads += 1
         return {
             "model": self.model,
             "language": self.language,
@@ -181,9 +188,6 @@ class FakeApi:
 
     def settings_or_empty(self) -> dict:
         return self.settings()
-
-    def current_options(self) -> tuple[str, str, str, str]:
-        return self.model, self.language, self.mode, self.default_profile
 
     def list_profiles(self) -> list[dict]:
         return list(self.profiles)
@@ -199,8 +203,18 @@ class FakeApi:
         return {"mode": self.mode, "default_profile": self.default_profile}
 
     def create_job(
-        self, data, filename, content_type, model=None, language=None, mode=None, profile=None
+        self,
+        data,
+        filename,
+        content_type,
+        model=None,
+        language=None,
+        mode=None,
+        profile=None,
+        duration_s=None,
     ) -> Job:
+        if model and model in self.invalid_models:
+            raise ApiError(f"Modelo inválido: {model}", "invalid_model")
         self.uploads.append(
             {
                 "bytes": len(data),
@@ -210,6 +224,7 @@ class FakeApi:
                 "language": language,
                 "mode": mode,
                 "profile": profile,
+                "duration_s": duration_s,
             }
         )
         return Job(id="job-1", status="queued")

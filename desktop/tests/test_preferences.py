@@ -81,6 +81,41 @@ def test_non_mapping_input_is_ignored():
     assert preferences.from_mapping(["nada"]) == preferences.Preferences()
 
 
+def test_latency_defaults_are_the_fast_ones():
+    current = preferences.Preferences()
+    assert current.stt_model == "gpt-4o-mini-transcribe"
+    assert current.upload_format == "auto"
+    assert (current.typing_batch, current.typing_delay_ms) == (16, 0)
+    assert current.typing_delay == 0.0
+
+
+def test_typing_rhythm_is_bounded_and_typed():
+    assert preferences.from_mapping({"typing_batch": 8}).typing_batch == 8
+    assert preferences.from_mapping({"typing_batch": 0}).typing_batch == preferences.MIN_BATCH
+    assert preferences.from_mapping({"typing_batch": 999}).typing_batch == preferences.MAX_BATCH
+    assert preferences.from_mapping({"typing_batch": "16"}).typing_batch == 16
+    assert preferences.from_mapping({"typing_batch": True}).typing_batch == 16
+    assert preferences.from_mapping({"typing_delay_ms": 4}).typing_delay == 0.004
+    assert preferences.from_mapping({"typing_delay_ms": 90}).typing_delay_ms == (
+        preferences.MAX_TYPING_DELAY_MS
+    )
+    assert preferences.from_mapping({"typing_delay_ms": -3}).typing_delay_ms == 0
+
+
+def test_upload_format_accepts_only_known_choices():
+    assert preferences.from_mapping({"upload_format": "opus"}).upload_format == "opus"
+    assert preferences.from_mapping({"upload_format": "wav"}).upload_format == "wav"
+    assert preferences.from_mapping({"upload_format": "ogg"}).upload_format == "auto"
+
+
+def test_the_stt_model_can_be_left_to_the_server():
+    # Vazio é escolha legítima: segue o padrão do backend.
+    assert preferences.from_mapping({"stt_model": ""}).stt_model == ""
+    assert preferences.from_mapping({"stt_model": "  "}).stt_model == ""
+    assert preferences.from_mapping({"stt_model": 7}).stt_model == "gpt-4o-mini-transcribe"
+    assert preferences.from_mapping({"stt_model": " gpt-transcribe "}).stt_model == "gpt-transcribe"
+
+
 def test_load_without_file_uses_defaults(tmp_path):
     assert preferences.load(tmp_path / "nao-existe.json") == preferences.Preferences()
 

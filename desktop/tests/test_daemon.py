@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,8 +11,9 @@ import pytest
 
 from fakes import FakeApi, FakePlatform, FakeRecorder
 from vb_typer_desktop import daemon as daemon_module
+from vb_typer_desktop import preferences
 from vb_typer_desktop.api import Job
-from vb_typer_desktop.daemon import Daemon
+from vb_typer_desktop.daemon import POLL_MAX_INTERVAL_S, Daemon
 from vb_typer_desktop.preferences import Preferences
 
 
@@ -21,11 +23,11 @@ def build(api=None, platform=None, **kwargs):
     def notify(title: str, message: str, urgency: str = "normal") -> None:
         notifications.append((title, message, urgency))
 
+    kwargs.setdefault("poll_interval", 0.0)
     agent = Daemon(
         api=api or FakeApi(),
         platform=platform or FakePlatform(),
         notify_fn=notify,
-        poll_interval=0.0,
         **kwargs,
     )
     return agent, notifications
@@ -87,8 +89,108 @@ def test_options_come_from_the_interface(make_wav, tmp_path):
     api = FakeApi(model="gpt-transcribe", language="en")
     agent, _ = build(api=api)
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
-    assert api.uploads[0]["model"] == "gpt-transcribe"
+    # O modelo de fala vem das preferências (o rápido); o resto, da interface.
+    assert api.uploads[0]["model"] == "gpt-4o-mini-transcribe"
     assert api.uploads[0]["language"] == "en"
+
+
+def test_empty_model_preference_follows_the_server(make_wav, tmp_path):
+    api = FakeApi(model="gpt-transcribe")
+    agent, _ = build(api=api, preferences=Preferences(stt_model=""))
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    assert api.uploads[0]["model"] == "gpt-transcribe"
+
+
+def test_a_rejected_model_falls_back_to_the_server(make_wav, tmp_path):
+    api = FakeApi(model="gpt-transcribe")
+    api.invalid_models = {"gpt-4o-mini-transcribe"}
+    agent, notifications = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert [item["model"] for item in api.uploads] == [None]
+    assert agent._model_rejected == "gpt-4o-mini-transcribe"
+    assert agent.last_transcript == "Ola, acao!"  # o ditado não se perde
+    assert not any(urgency == "critical" for _, _, urgency in notifications)
+
+
+def test_the_rejected_model_is_not_tried_again(make_wav, tmp_path):
+    api = FakeApi(model="gpt-transcribe")
+    api.invalid_models = {"gpt-4o-mini-transcribe"}
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    agent.busy = False
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "b.wav")), 7)
+
+    assert [item["model"] for item in api.uploads] == [None, None]
+
+
+def test_duration_measured_from_the_wav_goes_with_the_job(make_wav, tmp_path):
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav", 0.5)), 7)
+
+    assert api.uploads[0]["duration_s"] is not None
+    assert 0.4 <= api.uploads[0]["duration_s"] <= 0.6
+
+
+def test_remote_api_uploads_opus(make_wav, tmp_path, monkeypatch):
+    api = FakeApi()
+    api.base_url = "https://vbtyper.example.com"
+    converted = tmp_path / "enviado.ogg"
+    sent: list[Path] = []
+
+    def fake_to_opus(path):
+        converted.write_bytes(b"OggS" + b"\0" * 64)
+        sent.append(path)
+        return converted
+
+    monkeypatch.setattr(daemon_module.compress, "to_opus", fake_to_opus)
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert sent and api.uploads[0]["content_type"] == "audio/ogg"
+    assert api.uploads[0]["filename"] == "enviado.ogg"
+    assert not converted.exists()
+
+
+def test_compression_can_be_turned_off(make_wav, tmp_path, monkeypatch):
+    api = FakeApi()
+    api.base_url = "https://vbtyper.example.com"
+    calls: list[Path] = []
+    monkeypatch.setattr(daemon_module.compress, "to_opus", lambda path: calls.append(path))
+    agent, _ = build(api=api, preferences=Preferences(upload_format="wav"))
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert calls == []
+    assert api.uploads[0]["content_type"] == "audio/wav"
+
+
+def test_a_failed_conversion_keeps_the_wav(make_wav, tmp_path, monkeypatch):
+    api = FakeApi()
+    api.base_url = "https://vbtyper.example.com"
+    monkeypatch.setattr(daemon_module.compress, "to_opus", lambda path: None)
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+
+    assert api.uploads[0]["content_type"] == "audio/wav"
+    assert api.inserts and agent.busy is False
+
+
+def test_typing_preferences_reach_the_platform():
+    platform = FakePlatform()
+    agent, _ = build(platform=platform, preferences=Preferences(typing_batch=8, typing_delay_ms=3))
+    assert platform.typing == (8, 0.003)
+    assert agent.preferences.typing_batch == 8
+
+
+def test_preferences_are_reloaded_while_the_client_runs():
+    platform = FakePlatform()
+    agent, _ = build(platform=platform)
+    preferences.save(preferences.Preferences(typing_batch=4, typing_delay_ms=1))
+
+    assert agent.reload_preferences() is True
+    assert platform.typing == (4, 0.001)
+    assert agent.reload_preferences() is False  # nada mudou: não rearma nada
 
 
 # ------------------------------------------------------------------ falha de foco
@@ -834,6 +936,50 @@ def test_wait_for_terminal_tracks_the_backend_phase():
     agent._wait_for_terminal(Job(id="job-1", status="running"))
 
     assert agent.job_phase == "rendering"
+
+
+def test_the_first_poll_does_not_wait():
+    api = FakeApi(status="running")
+    # Intervalo enorme: se esperasse antes da primeira consulta, o teste travaria.
+    agent, _ = build(api=api, poll_interval=30.0)
+
+    def finish():
+        api.status = "succeeded"
+
+    api.on_poll = finish
+    started = time.monotonic()
+    job = agent._wait_for_terminal(Job(id="job-1", status="queued"))
+
+    assert job is not None and job.status == "succeeded"
+    assert api.polls == 1
+    assert time.monotonic() - started < 1
+
+
+def test_poll_delay_grows_up_to_the_ceiling():
+    agent, _ = build(poll_interval=0.15)
+
+    assert agent._next_poll_delay(0) == 0.15
+    assert agent._next_poll_delay(0.15) == 0.3
+    assert round(agent._next_poll_delay(0.3), 2) == 0.6
+    assert agent._next_poll_delay(0.6) == POLL_MAX_INTERVAL_S
+    assert agent._next_poll_delay(POLL_MAX_INTERVAL_S) == POLL_MAX_INTERVAL_S
+
+
+def test_a_zero_interval_never_waits():
+    agent, _ = build(poll_interval=0.0)
+    assert agent._next_poll_delay(0) == 0.0
+    assert agent._next_poll_delay(5) == 0.0
+
+
+def test_settings_are_read_once_and_then_kept(make_wav, tmp_path):
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    first = api.settings_reads
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "b.wav")), 7)
+
+    assert first >= 1
+    assert api.settings_reads == first  # o segundo ditado não pede de novo
 
 
 def test_job_phase_is_cleared_when_the_dictation_ends(make_wav, tmp_path):
