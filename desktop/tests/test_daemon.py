@@ -89,9 +89,16 @@ def test_options_come_from_the_interface(make_wav, tmp_path):
     api = FakeApi(model="gpt-transcribe", language="en")
     agent, _ = build(api=api)
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
-    # O modelo de fala vem das preferências (o rápido); o resto, da interface.
-    assert api.uploads[0]["model"] == "gpt-4o-mini-transcribe"
+    # Sem override local, o modelo é o escolhido no servidor (web ou bandeja).
+    assert api.uploads[0]["model"] == "gpt-transcribe"
     assert api.uploads[0]["language"] == "en"
+
+
+def test_a_local_model_override_wins_the_server(make_wav, tmp_path):
+    api = FakeApi(model="gpt-transcribe")
+    agent, _ = build(api=api, preferences=Preferences(stt_model="gpt-4o-mini-transcribe"))
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    assert api.uploads[0]["model"] == "gpt-4o-mini-transcribe"
 
 
 def test_empty_model_preference_follows_the_server(make_wav, tmp_path):
@@ -104,7 +111,9 @@ def test_empty_model_preference_follows_the_server(make_wav, tmp_path):
 def test_a_rejected_model_falls_back_to_the_server(make_wav, tmp_path):
     api = FakeApi(model="gpt-transcribe")
     api.invalid_models = {"gpt-4o-mini-transcribe"}
-    agent, notifications = build(api=api)
+    agent, notifications = build(
+        api=api, preferences=Preferences(stt_model="gpt-4o-mini-transcribe")
+    )
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
 
     assert [item["model"] for item in api.uploads] == [None]
@@ -116,7 +125,7 @@ def test_a_rejected_model_falls_back_to_the_server(make_wav, tmp_path):
 def test_the_rejected_model_is_not_tried_again(make_wav, tmp_path):
     api = FakeApi(model="gpt-transcribe")
     api.invalid_models = {"gpt-4o-mini-transcribe"}
-    agent, _ = build(api=api)
+    agent, _ = build(api=api, preferences=Preferences(stt_model="gpt-4o-mini-transcribe"))
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
     agent.busy = False
     agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "b.wav")), 7)
@@ -720,6 +729,105 @@ def test_a_deleted_profile_clears_the_temporary_override():
     agent.refresh_options()
 
     assert agent.profile_override == ""
+
+
+# ------------------------------------------------- espelho com a web e a bandeja
+
+
+def test_settings_are_not_reapplied_when_the_version_did_not_change():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    assert agent.refresh_options() is True
+    reads = api.profile_reads
+
+    assert agent.refresh_options() is False
+    assert api.profile_reads == reads  # não busca a lista de perfis de novo
+
+
+def test_a_change_made_in_the_web_reaches_the_tray():
+    api = FakeApi(model="gpt-4o-mini-transcribe", language="pt", smart_model="gpt-4o-mini")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    # A interface web (outro aparelho) trocou o modelo, o da revisão e o idioma.
+    api.model = "gpt-transcribe"
+    api.smart_model = "gpt-4.1-mini"
+    api.language = "en"
+
+    assert agent.refresh_options() is True
+    snapshot = agent.state_snapshot()
+    assert snapshot["model"] == "gpt-transcribe"
+    assert snapshot["smart_model"] == "gpt-4.1-mini"
+    assert snapshot["language"] == "en"
+
+
+def test_the_tray_changes_the_model_and_the_next_dictation_uses_it(make_wav, tmp_path):
+    api = FakeApi(model="gpt-transcribe")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.set_model("gpt-4o-mini-transcribe") is True
+    assert api.patched == [{"model": "gpt-4o-mini-transcribe"}]
+    assert agent.model == "gpt-4o-mini-transcribe"  # cache acompanha na hora
+    assert agent.refresh_options() is False  # nada a reaplicar no laço seguinte
+
+    agent._finish_and_transcribe(FakeRecorder(make_wav(tmp_path / "a.wav")), 7)
+    assert api.uploads[0]["model"] == "gpt-4o-mini-transcribe"
+
+
+def test_the_tray_refuses_a_model_outside_the_server_list():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.set_model("modelo-inexistente") is False
+    assert api.patched == []
+    assert agent.model == "gpt-4o-mini-transcribe"
+
+
+def test_the_tray_changes_the_review_model():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.set_smart_model("gpt-4.1-mini") is True
+    assert api.smart_model == "gpt-4.1-mini"
+    assert agent.state_snapshot()["smart_model"] == "gpt-4.1-mini"
+    assert agent.set_smart_model("nada-a-ver") is False
+
+
+def test_the_tray_changes_the_language():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.set_language("EN") is True
+    assert agent.language == "en"
+    assert agent.set_language("x") is False
+    assert agent.set_language("") is False
+
+
+def test_control_commands_reach_the_settings():
+    api = FakeApi()
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    assert agent.control_command("model", "gpt-transcribe") == {"ok": True}
+    assert agent.control_command("smart_model", "gpt-4.1-mini") == {"ok": True}
+    assert agent.control_command("language", "es") == {"ok": True}
+    assert (api.model, api.smart_model, api.language) == ("gpt-transcribe", "gpt-4.1-mini", "es")
+
+
+def test_the_snapshot_carries_the_choices_for_the_tray():
+    api = FakeApi(model="gpt-transcribe", smart_model="gpt-4.1-mini")
+    agent, _ = build(api=api)
+    agent.refresh_options()
+
+    snapshot = agent.state_snapshot()
+    assert snapshot["model"] == "gpt-transcribe"
+    assert snapshot["smart_model"] == "gpt-4.1-mini"
+    assert snapshot["models"] == ["gpt-4o-mini-transcribe", "gpt-transcribe"]
+    assert snapshot["smart_models"] == ["gpt-4o-mini", "gpt-4.1-mini"]
 
 
 # --------------------------------------------------------- atalhos de perfil
