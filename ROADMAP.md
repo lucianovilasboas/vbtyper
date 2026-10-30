@@ -321,6 +321,33 @@ O cliente ganhou instalação sem terminal e configuração no primeiro uso:
 
 **O que falta:** macOS/Windows (seção 4), assinatura dos pacotes e auto-update.
 
+### Latência do ditado: **feito** (branch `feat/latencia-do-ditado`)
+
+O cliente passou a entregar o texto antes, sem tocar na configuração do servidor:
+
+- **inserção em lotes** (`KEY_BATCH` = 16): `sync()`, foco e ponteiro uma vez por
+  lote em vez de por tecla. Medido nesta máquina: **5,6 ms → 0,5 ms por
+  caractere** no caminho bruto (o histórico registrava 13 ms por causa da
+  máquina carregada); um ditado de 1.280 caracteres cai de 9,6 s para menos de 1 s.
+- **menos idas e voltas**: as opções vêm do cache de 10 s (antes era um
+  `GET /settings` por ditado), a primeira consulta do job é imediata e o
+  intervalo dobra de 150 ms até 700 ms.
+- **upload menor**: WAV → Opus 32 kbps quando a API é remota (~960 KB → ~120 KB
+  em 30 s), com fallback obrigatório para o WAV; a duração medida vai junto no
+  job.
+- **modelo de fala**: o cliente pede `gpt-4o-mini-transcribe` (mais rápido) e cai
+  para o padrão do servidor se a API recusar com `invalid_model`.
+- **ritmo configurável**: `typing_batch`, `typing_delay_ms`, `upload_format` e
+  `stt_model` no `desktop.json`, relido a cada 10 s (sem reiniciar).
+- **medição**: `scripts/bench-dictation.py` (manual, gasta centavos) mostra o
+  tempo por fase. Linha de base medida contra a VPS, áudio de 18,6 s e 580 KB:
+  1,8 s de servidor e ~12 ms de envio.
+
+**O que falta:** um modelo de texto por perfil pela API (`profiles.model` existe e
+o worker respeita, mas `ProfileCreate`/`ProfileUpdate` não aceitam o campo — só
+dá para mudar o modelo global das configurações). Só faz sentido depois de medir
+o peso da segunda chamada com a fase `rendering` visível.
+
 ---
 
 ## 4. macOS e Windows

@@ -64,6 +64,14 @@ def _status(api: ApiClient, current: preferences.Preferences) -> int:
     )
     print(f"Reação: velocidade {current.speed:g} · sensibilidade {current.sensitivity:g}")
     print(f"Desenho da gravação: {current.shape}")
+    print(
+        f"Envio: {current.upload_format} · modelo de fala: "
+        f"{current.stt_model or 'padrão do servidor'}"
+    )
+    print(
+        f"Inserção: {current.typing_batch} teclas por lote · "
+        f"pausa de {current.typing_delay_ms} ms por tecla"
+    )
     try:
         ready = api.ready()
     except ApiError as exc:

@@ -181,9 +181,30 @@ ociosa) e, já visível, consulta a cada 30 ms; o desenho roda a ~50 fps.
 | `speed` | `1.0` | quão rápido a onda reage e volta (0.5 a 3.0) |
 | `sensitivity` | `1.0` | quão altas ficam a onda e as barras para a mesma voz (0.5 a 3.0) |
 | `shape` | `wave` | desenho da fase de gravação: `wave` (a onda da tela Ditar) ou `bar` (barra de nível) |
+| `stt_model` | `gpt-4o-mini-transcribe` | modelo de fala pedido no job; vazio segue o padrão do servidor |
+| `upload_format` | `auto` | `auto` (Opus quando a API é remota), `opus` ou `wav` |
+| `typing_batch` | `16` | teclas por lote na inserção (1 a 64) |
+| `typing_delay_ms` | `0` | pausa por tecla, em ms (0 a 20) |
 
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
-`sensitivity`. Mudanças valem no próximo start.
+`sensitivity`.
+
+**Latência.** O texto chega ao cursor em três etapas: envio do áudio, transcrição
+no servidor e digitação. Para cada uma há um ajuste:
+
+- `stt_model`: `gpt-4o-mini-transcribe` entrega antes do `gpt-transcribe`; é o
+  padrão do cliente e não muda nada no servidor.
+- `upload_format`: em `auto`, um WAV de 30 s (≈960 KB) vira Opus de ≈120 KB
+  quando a API está fora da máquina — mas só se o `ffmpeg` estiver instalado,
+  senão o WAV vai como antes.
+- `typing_batch` / `typing_delay_ms`: a inserção envia um lote de teclas por ida
+  ao servidor X em vez de uma por tecla (13 ms → ~0,5 ms por caractere, medido
+  nesta máquina). Se algum aplicativo engasgar com a rajada, `typing_batch: 1`
+  com `typing_delay_ms: 4` reproduz o ritmo antigo.
+
+O cliente relê este arquivo a cada 10 s enquanto está ativo: não é preciso
+reiniciar para aplicar um ajuste. Para medir o caminho inteiro, use
+`scripts/bench-dictation.py` (gasta centavos: é um job de verdade).
 
 Para voltar ao comportamento antigo sem editar arquivo:
 

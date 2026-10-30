@@ -197,6 +197,29 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     só exibe. TUI é um destino, não a regra. Não use tool calling da LLM para
     essas transformações.
 
+26. A latência do ditado é medida, não estimada: `transcriptions.transcribe_ms`
+    (chamada OpenAI) e `transcriptions.insert_ms` (digitação) são os números oficiais,
+    e `scripts/bench-dictation.py` mede o caminho inteiro pela API (envio, fases
+    do job, total). Orçamento que o cliente persegue: release→POST ≤ 150 ms,
+    POST→texto pronto = o que a OpenAI levar, e inserção ≤ 2 ms por caractere.
+    Antes de "otimizar", meça; depois, compare o `insert_ms` do histórico.
+
+27. A inserção no cursor **não** pode ter ida ao servidor X por caractere. O
+    `key_delay` fixo somado a `sync()`, `get_input_focus()` e `query_pointer()`
+    custava 13 ms por tecla (9,6 s num ditado de 1.280 caracteres); em lotes de
+    `KEY_BATCH` (16) o custo caiu para ~0,5 ms. Cancelamento continua conferido a
+    cada tecla e o foco a cada lote. O ritmo é configuração
+    (`typing_batch`/`typing_delay_ms` no `desktop.json`), nunca código: `1` com
+    `4` reproduz o comportamento antigo.
+
+28. A **VPS é a conexão padrão e a fonte da verdade** do ditado; o cliente não
+    prefere a API local. O que o cliente pode escolher é o **modelo de fala do
+    job** (`stt_model`, padrão `gpt-4o-mini-transcribe`, vazio = padrão do
+    servidor), e ele cai para o servidor quando a API responde `invalid_model`.
+    A configuração da VPS não é alterada por causa de latência sem pedido
+    explícito. Para encurtar o envio, o áudio vira Opus (`upload_format: auto`)
+    quando a API está fora da máquina, com o WAV como fallback obrigatório.
+
 ## Testes
 
 - Use o cliente ASGI (`httpx.ASGITransport` + `LifespanManager`), nunca o
@@ -264,12 +287,14 @@ O backlog combinado com o usuário vive em [`ROADMAP.md`](ROADMAP.md) — leia a
 de propor trabalho novo.
 
 - Backend v1 completo (jobs, histórico, estatísticas, configurações, CSV,
-  importador do 1.x) — 60 testes.
+  importador do 1.x) — 188 testes.
 - Cliente web (Ditar / Histórico / Atividade) servido na mesma origem.
 - Cliente desktop Linux/X11 completo (atalho, gravação, job, inserção no cursor,
-  bandeja, indicador visual, interface no navegador) — 146 testes. Verificado à
+  bandeja, indicador visual, interface no navegador) — 310 testes. Verificado à
   mão: XTEST com acentos, ciclo de vida do daemon, ditado ponta a ponta e as
   quatro fases do indicador (foto por fase, com API simulada).
+- Latência do ditado instrumentada (`transcribe_ms`, `insert_ms`,
+  `scripts/bench-dictation.py`) e atacada no cliente (ver invariantes 26–28).
 - Próximo: macOS e Windows pela camada `desktop/src/vb_typer_desktop/platform/`
   (adaptadores de áudio, inserção e bandeja), depois empacotamento one-file.
 

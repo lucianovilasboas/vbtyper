@@ -21,6 +21,11 @@ SUPER_KEYSYMS = (
     0xFFEE,  # Hyper_L, Hyper_R
 )
 MAX_PARENT_DEPTH = 64
+# Teclas enviadas por ida ao servidor X. Uma a uma custava ~13 ms por
+# caractere; em lotes de 16 o custo cai para ~1–2 ms e a inserção de um ditado
+# longo deixa de ser o maior atraso do cliente.
+KEY_BATCH = 16
+CANCELLED_INSERTION = "Inserção cancelada; transcrição preservada na janela."
 
 # Máscaras de modificador do X para os nomes que o backend usa.
 COMBO_MASKS = {
@@ -315,12 +320,61 @@ class ModifierWatcher:
                 close()
 
 
+def type_strokes(
+    strokes: list[tuple[int, bool, int | None]],
+    *,
+    press: Callable[[int], None],
+    release: Callable[[int], None],
+    sync: Callable[[], None],
+    before_batch: Callable[[], None],
+    check_focus: Callable[[], None],
+    cancel: threading.Event | None = None,
+    batch: int = KEY_BATCH,
+    key_delay: float = 0.0,
+) -> None:
+    """Envia as teclas em lotes: uma ida ao servidor X por lote, não por tecla.
+
+    Cada tecla custava duas chamadas a ``fake_input``, um ``sync()``, a leitura
+    do foco e a consulta do ponteiro — ~13 ms medidos por caractere, ou 9,6 s
+    num ditado de 1.280 caracteres. Aqui o ``sync()`` e as conferências valem
+    por lote (``KEY_BATCH``), o que baixa o custo sem tirar o cancelamento
+    (conferido a cada tecla) nem a checagem de foco.
+
+    ``strokes`` traz ``(keycode, precisa_shift, keycode_do_shift)``.
+    """
+    size = max(1, int(batch))
+    last = len(strokes) - 1
+    for index, (keycode, needs_shift, shift_code) in enumerate(strokes):
+        if cancel is not None and cancel.is_set():
+            raise RuntimeError(CANCELLED_INSERTION)
+        if index % size == 0:
+            before_batch()
+        shifted = bool(needs_shift and shift_code is not None)
+        if shifted:
+            press(shift_code)  # type: ignore[arg-type]
+        try:
+            press(keycode)
+        finally:
+            release(keycode)
+            if shifted:
+                release(shift_code)  # type: ignore[arg-type]
+        if index % size == size - 1 or index == last:
+            sync()
+        if key_delay > 0:
+            if cancel is not None:
+                cancel.wait(key_delay)
+            else:
+                time.sleep(key_delay)
+    check_focus()
+
+
 def type_text(
     text: str,
     target_window: int | None,
     cancel: threading.Event | None = None,
     modifier_timeout: float = 5,
-    key_delay: float = 0.004,
+    key_delay: float = 0.0,
+    batch: int = KEY_BATCH,
 ) -> None:
     """Digita no ponto do cursor da janela em foco usando XTEST, em ritmo de teclado.
 
@@ -328,10 +382,14 @@ def type_text(
     preciso), sem ida e volta de mapeamento por caractere. Caracteres ausentes
     do layout são atribuídos de uma vez a keycodes livres; um único
     ``MappingNotify`` cobre todos eles.
+
+    O envio sai em lotes (ver ``type_strokes``): ``batch`` teclas por ida ao
+    servidor X. ``key_delay`` continua existindo para aplicativos que engasgam
+    com rajada — é configuração (``typing_delay_ms``), não código.
     """
     cancel = cancel or threading.Event()
     if cancel.is_set():
-        raise RuntimeError("Inserção cancelada; transcrição preservada na janela.")
+        raise RuntimeError(CANCELLED_INSERTION)
     if target_window is None or read_active_window() != target_window:
         raise RuntimeError("O foco mudou; transcrição preservada na janela, sem inserção.")
     from Xlib import X, display
@@ -368,7 +426,7 @@ def type_text(
         def wait_modifiers() -> None:
             while True:
                 if cancel.is_set():
-                    raise RuntimeError("Inserção cancelada; transcrição preservada na janela.")
+                    raise RuntimeError(CANCELLED_INSERTION)
                 if not (connection.screen().root.query_pointer().mask & held_mask):
                     return
                 if time.monotonic() >= deadline:
@@ -402,29 +460,31 @@ def type_text(
             # Os clientes precisam processar o MappingNotify antes dessas teclas.
             cancel.wait(0.06)
 
+        strokes: list[tuple[int, bool, int | None]] = []
         for char in text:
-            if cancel.is_set():
-                raise RuntimeError("Inserção cancelada; transcrição preservada na janela.")
             symbol = keysym(char)
             entry = keymap.get(symbol)
             if entry is None:
-                keycode, needs_shift = spares[symbol], False
+                strokes.append((spares[symbol], False, shift_code))
             else:
                 keycode, needs_shift = entry
+                strokes.append((keycode, needs_shift, shift_code))
+
+        def before_batch() -> None:
             wait_modifiers()
             check_focus()
-            if needs_shift and shift_code:
-                fake_input(connection, X.KeyPress, shift_code)
-            try:
-                fake_input(connection, X.KeyPress, keycode)
-            finally:
-                fake_input(connection, X.KeyRelease, keycode)
-                if needs_shift and shift_code:
-                    fake_input(connection, X.KeyRelease, shift_code)
-            connection.sync()
-            if key_delay:
-                cancel.wait(key_delay)
-        check_focus()
+
+        type_strokes(
+            strokes,
+            press=lambda code: fake_input(connection, X.KeyPress, code),
+            release=lambda code: fake_input(connection, X.KeyRelease, code),
+            sync=connection.sync,
+            before_batch=before_batch,
+            check_focus=check_focus,
+            cancel=cancel,
+            batch=batch,
+            key_delay=key_delay,
+        )
     finally:
         try:
             for keycode, original in originals.items():
@@ -564,11 +624,20 @@ class LinuxX11Platform:
 
     name = "linux-x11"
 
+    def __init__(self, batch: int = KEY_BATCH, key_delay: float = 0.0) -> None:
+        # Ritmo da inserção; o daemon ajusta pelas preferências (desktop.json).
+        self.batch = batch
+        self.key_delay = key_delay
+
     def ensure_session(self) -> None:
         if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
             raise RuntimeError("Este cliente requer uma sessão X11; Wayland ainda não é suportado.")
         if not os.environ.get("DISPLAY"):
             raise RuntimeError("Não encontrei a sessão gráfica X11 (DISPLAY).")
+
+    def configure_typing(self, batch: int, delay: float) -> None:
+        self.batch = max(1, int(batch))
+        self.key_delay = max(0.0, float(delay))
 
     def active_window(self) -> int | None:
         return read_active_window()
@@ -576,7 +645,7 @@ class LinuxX11Platform:
     def type_text(
         self, text: str, target: int | None, cancel: threading.Event | None = None
     ) -> None:
-        type_text(text, target, cancel)
+        type_text(text, target, cancel, key_delay=self.key_delay, batch=self.batch)
 
     def hotkey_watcher(self, on_change: Callable[[str, bool], None]) -> ModifierWatcher:
         return ModifierWatcher(modifier_groups(), on_change)

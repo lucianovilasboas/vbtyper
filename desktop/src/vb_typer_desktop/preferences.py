@@ -12,6 +12,7 @@ from vb_typer_desktop.geometry import ANCHORS, POSITIONS
 
 NOTICE_MODES = ("indicator", "balloons", "both", "none")
 SHAPES = ("bar", "wave")
+UPLOAD_FORMATS = ("auto", "wav", "opus")
 DEFAULTS = {
     "notices": "indicator",
     "anchor": "window",
@@ -22,9 +23,19 @@ DEFAULTS = {
     "sensitivity": 1.0,
     "shape": "wave",
     "base_url": "",
+    # Modelo de fala pedido no job; vazio segue o padrão do servidor. O rápido
+    # entrega o texto antes do modelo grande e vale para qualquer perfil.
+    "stt_model": "gpt-4o-mini-transcribe",
+    # Formato do envio: "auto" comprime (Opus) quando a API é remota.
+    "upload_format": "auto",
+    # Ritmo da inserção no cursor: teclas por lote e pausa por tecla (ms).
+    "typing_batch": 16,
+    "typing_delay_ms": 0,
 }
 MIN_SIZE, MAX_SIZE = 24, 96
 MIN_TUNING, MAX_TUNING = 0.5, 3.0
+MIN_BATCH, MAX_BATCH = 1, 64
+MAX_TYPING_DELAY_MS = 20
 
 
 def preference_file() -> Path:
@@ -46,6 +57,11 @@ class Preferences:
     ele reage e mais altas ficam as barras para a mesma voz. ``shape`` escolhe o
     desenho da fase de gravação: ``wave`` (a onda colorida da tela Ditar) ou
     ``bar`` (barra de nível).
+
+    ``stt_model`` é o modelo pedido no job (vazio segue o servidor);
+    ``upload_format`` decide se o WAV vira Opus antes do envio; e
+    ``typing_batch``/``typing_delay_ms`` regulam a inserção no cursor — lote
+    maior é mais rápido, pausa maior é mais tolerante em aplicativos lentos.
     """
 
     notices: str = DEFAULTS["notices"]
@@ -58,6 +74,10 @@ class Preferences:
     shape: str = DEFAULTS["shape"]
     # Endereço da API escolhido no primeiro uso; vazio = padrão do ambiente.
     base_url: str = DEFAULTS["base_url"]
+    stt_model: str = DEFAULTS["stt_model"]
+    upload_format: str = DEFAULTS["upload_format"]
+    typing_batch: int = DEFAULTS["typing_batch"]
+    typing_delay_ms: int = DEFAULTS["typing_delay_ms"]
 
     @property
     def shows_indicator(self) -> bool:
@@ -70,6 +90,11 @@ class Preferences:
     @property
     def shows_error_balloons(self) -> bool:
         return self.notices != "none"
+
+    @property
+    def typing_delay(self) -> float:
+        """Pausa entre teclas, em segundos (``typing_delay_ms`` é a forma legível)."""
+        return max(0.0, self.typing_delay_ms) / 1000
 
 
 def _pick(value, allowed: tuple[str, ...], default: str) -> str:
@@ -90,6 +115,18 @@ def _text(value, default: str) -> str:
     return value.strip() or default
 
 
+def _optional_text(value, default: str) -> str:
+    """String opcional que **pode** ser vazia (vazio = seguir o servidor)."""
+    return value.strip() if isinstance(value, str) else default
+
+
+def _integer(value, default: int, minimum: int, maximum: int) -> int:
+    """Inteiro dentro da faixa; qualquer outra coisa cai no padrão."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    return min(maximum, max(minimum, value))
+
+
 def from_mapping(values) -> Preferences:
     """Lê preferências de um dicionário, ignorando valores inválidos."""
     if not isinstance(values, dict):
@@ -108,6 +145,17 @@ def from_mapping(values) -> Preferences:
         sensitivity=_tuning(values.get("sensitivity"), DEFAULTS["sensitivity"]),
         shape=_pick(values.get("shape"), SHAPES, DEFAULTS["shape"]),
         base_url=_text(values.get("base_url"), DEFAULTS["base_url"]),
+        stt_model=_optional_text(values.get("stt_model"), DEFAULTS["stt_model"]),
+        upload_format=_pick(values.get("upload_format"), UPLOAD_FORMATS, DEFAULTS["upload_format"]),
+        typing_batch=_integer(
+            values.get("typing_batch"), DEFAULTS["typing_batch"], MIN_BATCH, MAX_BATCH
+        ),
+        typing_delay_ms=_integer(
+            values.get("typing_delay_ms"),
+            DEFAULTS["typing_delay_ms"],
+            0,
+            MAX_TYPING_DELAY_MS,
+        ),
     )
 
 

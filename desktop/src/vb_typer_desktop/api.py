@@ -14,7 +14,16 @@ TERMINAL_STATUSES = frozenset({"succeeded", "failed", "canceled"})
 
 
 class ApiError(RuntimeError):
-    """Falha de comunicação com a API ou erro de domínio devolvido por ela."""
+    """Falha de comunicação com a API ou erro de domínio devolvido por ela.
+
+    ``code`` traz o código do envelope (``invalid_model``, ``audio_too_large``…)
+    quando a API manda um; é o que permite reagir a um caso específico — como
+    cair para o modelo do servidor quando o cliente pede um modelo recusado.
+    """
+
+    def __init__(self, message: str, code: str = "") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def token_file() -> Path:
@@ -74,17 +83,22 @@ def parse_job(payload: dict) -> Job:
 
 def error_message(response: httpx.Response) -> str:
     """Extrai a mensagem do envelope de erro da API, quando existir."""
+    return error_details(response)[0]
+
+
+def error_details(response: httpx.Response) -> tuple[str, str]:
+    """Mensagem e código do envelope de erro (``("", "")`` quando não há)."""
     try:
         payload = response.json()
     except ValueError:
-        return f"A API respondeu HTTP {response.status_code}."
+        return f"A API respondeu HTTP {response.status_code}.", ""
     if isinstance(payload, dict):
         envelope = payload.get("error")
         if isinstance(envelope, dict) and envelope.get("message"):
-            return str(envelope["message"])
+            return str(envelope["message"]), str(envelope.get("code") or "")
         if payload.get("detail"):
-            return str(payload["detail"])
-    return f"A API respondeu HTTP {response.status_code}."
+            return str(payload["detail"]), ""
+    return f"A API respondeu HTTP {response.status_code}.", ""
 
 
 class ApiClient:
@@ -120,7 +134,8 @@ class ApiClient:
         except httpx.HTTPError as exc:
             raise ApiError(f"Não foi possível falar com a API do VB Typer: {exc}") from exc
         if response.status_code >= 400:
-            raise ApiError(error_message(response))
+            message, code = error_details(response)
+            raise ApiError(message, code)
         return response
 
     def ready(self) -> dict:
@@ -139,9 +154,14 @@ class ApiClient:
         language: str | None = None,
         mode: str | None = None,
         profile: str | None = None,
+        duration_s: float | None = None,
     ) -> Job:
-        """Envia o áudio e recebe ``202`` com o job aceito."""
-        fields = {
+        """Envia o áudio e recebe ``202`` com o job aceito.
+
+        ``duration_s`` importa para o Opus/WebM, que não trazem a duração no
+        cabeçalho: sem ela o histórico perde o dado e a estimativa de custo.
+        """
+        fields: dict = {
             key: value
             for key, value in (
                 ("model", model),
@@ -151,6 +171,8 @@ class ApiClient:
             )
             if value
         }
+        if duration_s is not None and duration_s > 0:
+            fields["duration_s"] = f"{duration_s:.3f}"
         response = self._request(
             "POST",
             "/api/v1/transcription-jobs",
@@ -187,20 +209,6 @@ class ApiClient:
             return self.settings()
         except ApiError:
             return {}
-
-    def current_options(self) -> tuple[str, str, str, str]:
-        """Modelo, idioma, modo e perfil padrão escolhidos na interface.
-
-        A falha nunca impede o ditado: sem resposta, o backend decide pelos
-        padrões dele (literal entre eles).
-        """
-        payload = self.settings_or_empty()
-        return (
-            str(payload.get("model") or ""),
-            str(payload.get("language") or ""),
-            str(payload.get("mode") or ""),
-            str(payload.get("default_profile") or ""),
-        )
 
     def list_profiles(self) -> list[dict]:
         """Perfis de texto disponíveis (slug e nome), na ordem da API.
