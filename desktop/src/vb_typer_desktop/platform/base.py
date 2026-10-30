@@ -61,6 +61,9 @@ class Platform(Protocol):
     ) -> None:
         """Insere ``text`` no ponto do cursor da janela ``target``."""
 
+    def configure_typing(self, batch: int, delay: float) -> None:
+        """Ajusta o ritmo da inserção (teclas por lote e pausa por tecla)."""
+
     def hotkey_watcher(self, on_change: Callable[[str, bool], None]) -> HotkeyWatcher:
         """Cria o observador do atalho, avisando ``on_change(grupo, pressionada)``."""
 

@@ -9,10 +9,12 @@ import time
 import pytest
 
 from vb_typer_desktop.platform.linux_x11 import (
+    KEY_BATCH,
     LinuxX11Platform,
     ModifierWatcher,
     modifier_groups,
     read_active_window,
+    type_strokes,
     type_text,
 )
 
@@ -186,3 +188,84 @@ def test_typing_with_cancelled_event_is_refused():
     cancel.set()
     with pytest.raises(RuntimeError, match="cancelada"):
         type_text("Ola", 1, cancel)
+
+
+# --------------------------------------------------------- lote de digitação
+
+
+def strokes(count: int, shift_at: int | None = None) -> list[tuple[int, bool, int | None]]:
+    return [(10 + index, index == shift_at, 50) for index in range(count)]
+
+
+def run_strokes(items, **kwargs):
+    """Digita com dublês no lugar do X e conta as idas ao servidor."""
+    calls = {"sync": 0, "before": 0, "focus": 0, "pressed": [], "released": []}
+
+    type_strokes(
+        items,
+        press=calls["pressed"].append,
+        release=calls["released"].append,
+        sync=lambda: calls.__setitem__("sync", calls["sync"] + 1),
+        before_batch=lambda: calls.__setitem__("before", calls["before"] + 1),
+        check_focus=lambda: calls.__setitem__("focus", calls["focus"] + 1),
+        **kwargs,
+    )
+    return calls
+
+
+def test_keystrokes_are_sent_in_batches():
+    calls = run_strokes(strokes(40))
+
+    assert calls["pressed"] == [10 + index for index in range(40)]
+    assert calls["released"] == [10 + index for index in range(40)]
+    # 40 teclas em lotes de 16: 3 sincronizações + a final do lote incompleto.
+    assert calls["sync"] == 3
+    assert calls["before"] == 3
+    assert calls["focus"] == 1  # só a conferência final
+
+
+def test_every_batch_checks_focus_and_modifiers():
+    calls = run_strokes(strokes(20), batch=5)
+
+    assert calls["before"] == 4
+    assert calls["sync"] == 4
+
+
+def test_shift_wraps_the_letter_it_belongs_to():
+    calls = run_strokes([(10, False, 50), (11, True, 50)], batch=16)
+
+    assert calls["pressed"] == [10, 50, 11]
+    assert calls["released"] == [10, 11, 50]
+
+
+def test_cancellation_stops_between_keystrokes():
+    cancel = threading.Event()
+    pressed = []
+
+    def press(code):
+        pressed.append(code)
+        if len(pressed) >= 2:
+            cancel.set()
+
+    with pytest.raises(RuntimeError, match="cancelada"):
+        type_strokes(
+            strokes(10),
+            press=press,
+            release=lambda code: None,
+            sync=lambda: None,
+            before_batch=lambda: None,
+            check_focus=lambda: None,
+            cancel=cancel,
+        )
+    assert len(pressed) == 2
+
+
+def test_platform_typing_rhythm_can_be_configured():
+    platform = LinuxX11Platform()
+    assert platform.batch == KEY_BATCH and platform.key_delay == 0.0
+
+    platform.configure_typing(4, 0.002)
+    assert (platform.batch, platform.key_delay) == (4, 0.002)
+
+    platform.configure_typing(0, -1)
+    assert (platform.batch, platform.key_delay) == (1, 0.0)
