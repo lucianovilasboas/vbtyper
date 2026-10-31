@@ -327,8 +327,14 @@ O cliente passou a entregar o texto antes, sem tocar na configuração do servid
 
 - **inserção em lotes** (`KEY_BATCH` = 16): `sync()`, foco e ponteiro uma vez por
   lote em vez de por tecla. Medido nesta máquina: **5,6 ms → 0,5 ms por
-  caractere** no caminho bruto (o histórico registrava 13 ms por causa da
-  máquina carregada); um ditado de 1.280 caracteres cai de 9,6 s para menos de 1 s.
+  caractere** no caminho bruto; um ditado de 1.280 caracteres cai de 9,6 s para
+  menos de 1 s. **Revertido em `v0.20.1`** como padrão: em aplicativo com IBus o
+  commit de uma tecla pode chegar depois da seguinte e o texto aparece trocado.
+  O ritmo seguro (1 tecla, 4 ms) voltou a ser o padrão; o lote ficou opt-in e se
+  prova com `scripts/type-probe.py`.
+- **caracteres compostos**: `á`, `ã`, `é`… não existem no layout `br` e chegam
+  por keycode reservado; eles e seus vizinhos forçam `sync()` + 6 ms de pausa,
+  porque é o método de entrada que os recompõe.
 - **menos idas e voltas**: as opções vêm do cache de 10 s (antes era um
   `GET /settings` por ditado), a primeira consulta do job é imediata e o
   intervalo dobra de 150 ms até 700 ms.

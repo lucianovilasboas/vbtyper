@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from typing import NamedTuple
 
 from vb_typer_desktop.geometry import Rect
 
@@ -22,9 +23,13 @@ SUPER_KEYSYMS = (
 )
 MAX_PARENT_DEPTH = 64
 # Teclas enviadas por ida ao servidor X. Uma a uma custava ~13 ms por
-# caractere; em lotes de 16 o custo cai para ~1–2 ms e a inserção de um ditado
-# longo deixa de ser o maior atraso do cliente.
+# caractere; em lotes o custo cai, mas o lote só pode crescer com um método de
+# entrada que acompanhe (ver ``type_strokes``) — por isso o padrão do cliente é
+# 1, com pausa de 4 ms, que é o ritmo comprovado em uso diário.
 KEY_BATCH = 16
+# Pausa mínima em volta de caractere composto (fora do layout): o IBus commita
+# de forma assíncrona e precisa desse tempo para não inverter a ordem.
+COMPOSE_PAUSE_S = 0.006
 CANCELLED_INSERTION = "Inserção cancelada; transcrição preservada na janela."
 
 # Máscaras de modificador do X para os nomes que o backend usa.
@@ -320,8 +325,19 @@ class ModifierWatcher:
                 close()
 
 
+class Stroke(NamedTuple):
+    """Uma tecla a enviar: keycode, se precisa de Shift e o keycode do Shift."""
+
+    keycode: int
+    needs_shift: bool = False
+    shift_code: int | None = None
+    # Caractere que o layout não produz (chega por keycode reservado): o método
+    # de entrada o recompõe e precisa de pausa para commitar em ordem.
+    composed: bool = False
+
+
 def type_strokes(
-    strokes: list[tuple[int, bool, int | None]],
+    strokes: list[Stroke],
     *,
     press: Callable[[int], None],
     release: Callable[[int], None],
@@ -337,34 +353,43 @@ def type_strokes(
     Cada tecla custava duas chamadas a ``fake_input``, um ``sync()``, a leitura
     do foco e a consulta do ponteiro — ~13 ms medidos por caractere, ou 9,6 s
     num ditado de 1.280 caracteres. Aqui o ``sync()`` e as conferências valem
-    por lote (``KEY_BATCH``), o que baixa o custo sem tirar o cancelamento
-    (conferido a cada tecla) nem a checagem de foco.
+    por lote, o que baixa o custo sem tirar o cancelamento (conferido a cada
+    tecla) nem a checagem de foco.
 
-    ``strokes`` traz ``(keycode, precisa_shift, keycode_do_shift)``.
+    **O lote não pode atropelar o método de entrada.** Com IBus (o padrão desta
+    sessão), o caractere só entra no aplicativo depois de uma ida e volta com o
+    ``ibus-daemon``; em rajada, o commit de uma tecla chega depois da seguinte e
+    o texto sai trocado ("está" → "esát"). Por isso os caracteres compostos
+    (``composed``) e seus vizinhos forçam ``sync()`` e uma pausa de
+    ``COMPOSE_PAUSE_S`` — o ``sync()`` vem **antes** da pausa porque é ele que
+    entrega os pedidos pendentes ao servidor.
     """
     size = max(1, int(batch))
     last = len(strokes) - 1
-    for index, (keycode, needs_shift, shift_code) in enumerate(strokes):
+    for index, stroke in enumerate(strokes):
         if cancel is not None and cancel.is_set():
             raise RuntimeError(CANCELLED_INSERTION)
         if index % size == 0:
             before_batch()
-        shifted = bool(needs_shift and shift_code is not None)
+        next_composed = index < last and strokes[index + 1].composed
+        composed = stroke.composed or next_composed
+        pause = max(COMPOSE_PAUSE_S if composed else 0.0, key_delay)
+        shifted = bool(stroke.needs_shift and stroke.shift_code is not None)
         if shifted:
-            press(shift_code)  # type: ignore[arg-type]
+            press(stroke.shift_code)  # type: ignore[arg-type]
         try:
-            press(keycode)
+            press(stroke.keycode)
         finally:
-            release(keycode)
+            release(stroke.keycode)
             if shifted:
-                release(shift_code)  # type: ignore[arg-type]
-        if index % size == size - 1 or index == last:
+                release(stroke.shift_code)  # type: ignore[arg-type]
+        if index % size == size - 1 or index == last or pause > 0:
             sync()
-        if key_delay > 0:
+        if pause > 0:
             if cancel is not None:
-                cancel.wait(key_delay)
+                cancel.wait(pause)
             else:
-                time.sleep(key_delay)
+                time.sleep(pause)
     check_focus()
 
 
@@ -460,15 +485,15 @@ def type_text(
             # Os clientes precisam processar o MappingNotify antes dessas teclas.
             cancel.wait(0.06)
 
-        strokes: list[tuple[int, bool, int | None]] = []
+        strokes: list[Stroke] = []
         for char in text:
             symbol = keysym(char)
             entry = keymap.get(symbol)
             if entry is None:
-                strokes.append((spares[symbol], False, shift_code))
+                strokes.append(Stroke(spares[symbol], False, shift_code, composed=True))
             else:
                 keycode, needs_shift = entry
-                strokes.append((keycode, needs_shift, shift_code))
+                strokes.append(Stroke(keycode, needs_shift, shift_code))
 
         def before_batch() -> None:
             wait_modifiers()

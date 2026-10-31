@@ -9,9 +9,11 @@ import time
 import pytest
 
 from vb_typer_desktop.platform.linux_x11 import (
+    COMPOSE_PAUSE_S,
     KEY_BATCH,
     LinuxX11Platform,
     ModifierWatcher,
+    Stroke,
     modifier_groups,
     read_active_window,
     type_strokes,
@@ -193,8 +195,29 @@ def test_typing_with_cancelled_event_is_refused():
 # --------------------------------------------------------- lote de digitação
 
 
-def strokes(count: int, shift_at: int | None = None) -> list[tuple[int, bool, int | None]]:
-    return [(10 + index, index == shift_at, 50) for index in range(count)]
+class RecordingCancel:
+    """Evento falso que anota as pausas pedidas pela inserção."""
+
+    def __init__(self) -> None:
+        self.waits: list[float] = []
+        self._set = False
+
+    def is_set(self) -> bool:
+        return self._set
+
+    def set(self) -> None:
+        self._set = True
+
+    def wait(self, seconds: float) -> bool:
+        self.waits.append(round(seconds, 6))
+        return self._set
+
+
+def strokes(count: int, shift_at: int | None = None, composed: tuple[int, ...] = ()):
+    return [
+        Stroke(10 + index, index == shift_at, 50, composed=index in composed)
+        for index in range(count)
+    ]
 
 
 def run_strokes(items, **kwargs):
@@ -232,10 +255,39 @@ def test_every_batch_checks_focus_and_modifiers():
 
 
 def test_shift_wraps_the_letter_it_belongs_to():
-    calls = run_strokes([(10, False, 50), (11, True, 50)], batch=16)
+    calls = run_strokes([Stroke(10), Stroke(11, True, 50)], batch=16)
 
     assert calls["pressed"] == [10, 50, 11]
     assert calls["released"] == [10, 11, 50]
+
+
+def test_composed_characters_pause_for_the_input_method():
+    """O IBus commita de forma assíncrona: compor sem pausa troca letras de lugar."""
+    cancel = RecordingCancel()
+
+    calls = run_strokes(strokes(3, composed=(1,)), cancel=cancel)
+
+    # Pausa depois da tecla anterior ao composto e depois do próprio composto;
+    # o sync() vem antes da pausa, senão os pedidos ficam no buffer do cliente.
+    assert cancel.waits == [COMPOSE_PAUSE_S, COMPOSE_PAUSE_S]
+    assert calls["sync"] == 3
+
+
+def test_plain_text_only_pauses_when_asked():
+    plain = RecordingCancel()
+    run_strokes(strokes(5), cancel=plain, batch=16)
+    assert plain.waits == []
+
+    slow = RecordingCancel()
+    run_strokes(strokes(2), cancel=slow, batch=16, key_delay=0.004)
+    assert slow.waits == [0.004, 0.004]
+
+
+def test_the_compose_pause_wins_over_a_short_delay():
+    cancel = RecordingCancel()
+    run_strokes(strokes(2, composed=(0,)), cancel=cancel, key_delay=0.001)
+    # O composto impõe 6 ms; depois dele vale o atraso configurado.
+    assert cancel.waits == [COMPOSE_PAUSE_S, 0.001]
 
 
 def test_cancellation_stops_between_keystrokes():

@@ -204,13 +204,17 @@ Antes de encerrar qualquer tarefa: `ruff check`, `ruff format --check` e
     POST→texto pronto = o que a OpenAI levar, e inserção ≤ 2 ms por caractere.
     Antes de "otimizar", meça; depois, compare o `insert_ms` do histórico.
 
-27. A inserção no cursor **não** pode ter ida ao servidor X por caractere. O
-    `key_delay` fixo somado a `sync()`, `get_input_focus()` e `query_pointer()`
-    custava 13 ms por tecla (9,6 s num ditado de 1.280 caracteres); em lotes de
-    `KEY_BATCH` (16) o custo caiu para ~0,5 ms. Cancelamento continua conferido a
-    cada tecla e o foco a cada lote. O ritmo é configuração
-    (`typing_batch`/`typing_delay_ms` no `desktop.json`), nunca código: `1` com
-    `4` reproduz o comportamento antigo.
+27. A inserção no cursor **não pode atropelar o método de entrada**. O custo por
+    tecla não é o alvo: o IBus (padrão da sessão) entrega o caractere ao
+    aplicativo por uma ida e volta assíncrona, e uma rajada faz o commit de uma
+    tecla chegar depois da seguinte — o texto sai trocado (`está` → `esát`) mesmo
+    com o histórico correto. Por isso: `typing_batch`/`typing_delay_ms` nascem em
+    **1 tecla e 4 ms** (o ritmo comprovado); lote é opt-in por aplicativo e só se
+    prova com `scripts/type-probe.py`; caracteres compostos (fora do layout, por
+    keycode reservado) e seus vizinhos forçam `sync()` + `COMPOSE_PAUSE_S` (6 ms),
+    **sempre com o `sync()` antes da pausa** — é ele que entrega os pedidos
+    pendentes ao servidor. Cancelamento continua conferido a cada tecla e o foco
+    a cada lote.
 
 28. A **VPS é a conexão padrão e a fonte da verdade** do ditado; o cliente não
     prefere a API local. As escolhas do ditado (modelo de fala, modelo de

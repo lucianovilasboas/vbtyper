@@ -26,9 +26,11 @@ DEFAULTS = {
     "stt_model": "",
     # Formato do envio: "auto" comprime (Opus) quando a API é remota.
     "upload_format": "auto",
-    # Ritmo da inserção no cursor: teclas por lote e pausa por tecla (ms).
-    "typing_batch": 16,
-    "typing_delay_ms": 0,
+    # Ritmo da inserção no cursor: teclas por lote e pausa por tecla (ms). O
+    # padrão é o ritmo comprovado: uma tecla por vez, com folga para o método de
+    # entrada (IBus) commitar em ordem. Lotes são opt-in, por aplicativo.
+    "typing_batch": 1,
+    "typing_delay_ms": 4,
 }
 MIN_SIZE, MAX_SIZE = 24, 96
 MIN_TUNING, MAX_TUNING = 0.5, 3.0

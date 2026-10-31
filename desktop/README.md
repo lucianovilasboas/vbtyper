@@ -183,8 +183,8 @@ ociosa) e, já visível, consulta a cada 30 ms; o desenho roda a ~50 fps.
 | `shape` | `wave` | desenho da fase de gravação: `wave` (a onda da tela Ditar) ou `bar` (barra de nível) |
 | `stt_model` | *(vazio)* | override do modelo de fala; vazio segue o modelo escolhido no servidor |
 | `upload_format` | `auto` | `auto` (Opus quando a API é remota), `opus` ou `wav` |
-| `typing_batch` | `16` | teclas por lote na inserção (1 a 64) |
-| `typing_delay_ms` | `0` | pausa por tecla, em ms (0 a 20) |
+| `typing_batch` | `1` | teclas por lote na inserção (1 a 64) |
+| `typing_delay_ms` | `4` | pausa por tecla, em ms (0 a 20) |
 
 Se a onda parecer lenta, suba `speed`; se as barras parecerem baixas, suba
 `sensitivity`.
@@ -203,10 +203,29 @@ no servidor e digitação. Para cada uma há um ajuste:
 - `upload_format`: em `auto`, um WAV de 30 s (≈960 KB) vira Opus de ≈120 KB
   quando a API está fora da máquina — mas só se o `ffmpeg` estiver instalado,
   senão o WAV vai como antes.
-- `typing_batch` / `typing_delay_ms`: a inserção envia um lote de teclas por ida
-  ao servidor X em vez de uma por tecla (13 ms → ~0,5 ms por caractere, medido
-  nesta máquina). Se algum aplicativo engasgar com a rajada, `typing_batch: 1`
-  com `typing_delay_ms: 4` reproduz o ritmo antigo.
+- `typing_batch` / `typing_delay_ms`: quantas teclas saem por ida ao servidor X e
+  a pausa entre elas. **O padrão (1 tecla, 4 ms) é o ritmo comprovado em uso
+  diário** — não é pessimismo, é o método de entrada.
+
+**Por que o ritmo importa.** A 0.20.0 saiu com lotes de 16 teclas e nenhuma
+pausa. O texto salvo no histórico estava correto, mas o que aparecia no
+aplicativo vinha trocado (`está` → `esát`, `atualização` → `atualiçzãa`): com
+IBus, o caractere só é entregue ao aplicativo depois de uma ida e volta com o
+`ibus-daemon`, e numa rajada o commit de uma tecla chega depois da seguinte. Se
+quiser tentar mais velocidade, meça antes:
+
+```bash
+cd desktop
+uv run python ../scripts/type-probe.py                 # 4 ritmos, janela GTK de teste
+uv run python ../scripts/type-probe.py --in-focus --batch 8 --delay 2
+                                                       # digita no app que você focar
+```
+
+O primeiro comando compara esperado × recebido e mostra os ms/caractere; o
+segundo digita no seu aplicativo (com contagem regressiva) e você confere o
+resultado. Só coloque no `desktop.json` o ritmo que passar — os caracteres
+acentuados sempre ganham 6 ms extras, independentemente do lote, porque são
+eles que o método de entrada recompõe.
 
 O cliente relê este arquivo a cada 10 s enquanto está ativo: não é preciso
 reiniciar para aplicar um ajuste. Para medir o caminho inteiro, use
