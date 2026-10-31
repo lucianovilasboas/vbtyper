@@ -86,16 +86,24 @@ def test_latency_defaults_are_the_fast_ones():
     # Modelo vazio = segue o servidor: a web e a bandeja mandam no ditado.
     assert current.stt_model == ""
     assert current.upload_format == "auto"
-    assert (current.typing_batch, current.typing_delay_ms) == (16, 0)
-    assert current.typing_delay == 0.0
+    # O ritmo da inserção é o comprovado: uma tecla por vez, com folga para o
+    # método de entrada commitar em ordem.
+    assert (current.typing_batch, current.typing_delay_ms) == (1, 4)
+    assert current.typing_delay == 0.004
 
 
 def test_typing_rhythm_is_bounded_and_typed():
     assert preferences.from_mapping({"typing_batch": 8}).typing_batch == 8
     assert preferences.from_mapping({"typing_batch": 0}).typing_batch == preferences.MIN_BATCH
     assert preferences.from_mapping({"typing_batch": 999}).typing_batch == preferences.MAX_BATCH
-    assert preferences.from_mapping({"typing_batch": "16"}).typing_batch == 16
-    assert preferences.from_mapping({"typing_batch": True}).typing_batch == 16
+    assert (
+        preferences.from_mapping({"typing_batch": "16"}).typing_batch
+        == (preferences.DEFAULTS["typing_batch"])
+    )
+    assert (
+        preferences.from_mapping({"typing_batch": True}).typing_batch
+        == (preferences.DEFAULTS["typing_batch"])
+    )
     assert preferences.from_mapping({"typing_delay_ms": 4}).typing_delay == 0.004
     assert preferences.from_mapping({"typing_delay_ms": 90}).typing_delay_ms == (
         preferences.MAX_TYPING_DELAY_MS
